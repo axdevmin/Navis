@@ -27,6 +27,7 @@ import { playerArea_MapPingMutation } from "./__generated__/playerArea_MapPingMu
 import { UpdateTokenContext } from "./update-token-context";
 import { LazyLoadedMapView } from "./lazy-loaded-map-view";
 import { useRandomBackground } from "./hooks/use-random-background";
+import { CombatTracker } from "./dm-area/combat/combat-tracker";
 
 const ToolbarContainer = styled.div`
   position: absolute;
@@ -62,6 +63,7 @@ const PlayerMap_ActiveMapQuery = graphql`
     activeMap {
       id
       ...mapView_MapFragment
+      ...combatTracker_MapFragment
     }
   }
 `;
@@ -249,6 +251,9 @@ const PlayerMap = ({
             </React.Suspense>
           ) : null}
         </FlatContextProvider>
+        {currentMap.data?.activeMap ? (
+          <CombatTracker map={currentMap.data.activeMap} isEditable={false} />
+        ) : null}
       </div>
       {!showSplashScreen ? (
         isMapOnly ? null : (

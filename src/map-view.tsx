@@ -30,10 +30,18 @@ import { useIsKeyPressed } from "./hooks/use-is-key-pressed";
 import * as Icon from "./feather-icons";
 import { TextureLoader } from "three";
 import { ReactEventHandlers } from "react-use-gesture/dist/types";
-import { useFragment, useSubscription } from "relay-hooks";
-import { buttonGroup, useControls, useCreateStore, LevaInputs } from "leva";
+import { useFragment, useMutation, useSubscription } from "relay-hooks";
+import {
+  button,
+  buttonGroup,
+  useControls,
+  useCreateStore,
+  LevaInputs,
+} from "leva";
 import { levaPluginNoteReference } from "./leva-plugin/leva-plugin-note-reference";
 import { levaPluginTokenImage } from "./leva-plugin/leva-plugin-token-image";
+import { defaultFactionForTokenType } from "./dm-area/combat/combat-faction";
+import { mapView_SaveAsLibraryCharacterMutation } from "./__generated__/mapView_SaveAsLibraryCharacterMutation.graphql";
 import { useMarkArea } from "./map-tools/player-map-tool";
 import { ContextMenuState, useShowContextMenu } from "./map-context-menu";
 import {
@@ -222,6 +230,16 @@ const TokenRendererMapTokenFragment = graphql`
   }
 `;
 
+const SaveAsLibraryCharacterMutation = graphql`
+  mutation mapView_SaveAsLibraryCharacterMutation(
+    $input: LibraryCharacterCreateInput!
+  ) {
+    libraryCharacterCreate(input: $input) {
+      id
+    }
+  }
+`;
+
 const TokenRenderer = (props: {
   id: string;
   token: mapView_TokenRendererMapTokenFragment$key;
@@ -230,6 +248,10 @@ const TokenRenderer = (props: {
   const token = useFragment(TokenRendererMapTokenFragment, props.token);
   const sharedMapState = React.useContext(SharedMapState);
   const updateToken = React.useContext(UpdateTokenContext);
+  const [saveAsLibraryCharacter] =
+    useMutation<mapView_SaveAsLibraryCharacterMutation>(
+      SaveAsLibraryCharacterMutation
+    );
   const pendingChangesRef = React.useRef<TokenPartialChanges>({});
   const enqueueSave = useStaticRef(() =>
     debounce(() => {
@@ -499,6 +521,21 @@ const TokenRenderer = (props: {
         },
         transient: false,
       },
+      "💾 Enregistrer comme personnage": button(() => {
+        saveAsLibraryCharacter({
+          variables: {
+            input: {
+              name:
+                typeof token.label === "string" && token.label
+                  ? token.label
+                  : "Sans nom",
+              faction: defaultFactionForTokenType(token.tokenType ?? "marker"),
+              color: token.color ?? "#888888",
+              tokenImageId: token.tokenImage?.id ?? null,
+            },
+          },
+        });
+      }),
     }),
     { store }
   );
@@ -635,6 +672,9 @@ const TokenRenderer = (props: {
             }
 
             if (event.button === 2) {
+              if (!tokenSelection.isSelected) {
+                tokenSelection.setSelectedItem(props.id, store);
+              }
               const [imageX, imageY] =
                 sharedMapState.helper.threePointToImageCoordinates([
                   // TODO: figure out why the point is not in the typings.

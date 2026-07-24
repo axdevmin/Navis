@@ -7,6 +7,9 @@ import * as Relay from "./relay-spec";
 import { t } from "..";
 import * as lib from "../../map-lib";
 import {
+  CombatFaction,
+  CombatParticipantEntity,
+  CombatState,
   MapEntity,
   MapGridEntity,
   MapTokenEntity,
@@ -111,6 +114,136 @@ const GraphQLMapUpdateWeatherResultType =
       t.field({ name: "updatedMap", type: t.NonNull(GraphQLMapType) }),
     ],
   });
+
+const GraphQLCombatFactionEnum = t.enumType<CombatFaction>({
+  name: "CombatFaction",
+  description: "Which side a combat participant belongs to.",
+  values: [
+    { name: "hero", value: "hero" as const },
+    { name: "enemy", value: "enemy" as const },
+    { name: "neutral", value: "neutral" as const },
+  ],
+});
+
+const GraphQLCombatParticipantType = t.objectType<CombatParticipantEntity>({
+  name: "CombatParticipant",
+  description: "A participant taking part in the current combat.",
+  fields: () => [
+    t.field({ name: "id", type: t.NonNull(t.ID) }),
+    t.field({ name: "name", type: t.NonNull(t.String) }),
+    t.field({ name: "faction", type: t.NonNull(GraphQLCombatFactionEnum) }),
+    t.field({ name: "initiative", type: t.NonNull(t.Int) }),
+    t.field({ name: "color", type: t.NonNull(t.String) }),
+    t.field({ name: "imageUrl", type: t.String }),
+    t.field({ name: "tokenId", type: t.ID }),
+    t.field({ name: "isVisibleForPlayers", type: t.NonNull(t.Boolean) }),
+    t.field({ name: "isDown", type: t.NonNull(t.Boolean) }),
+  ],
+});
+
+const GraphQLCombatStateType = t.objectType<CombatState>({
+  name: "CombatState",
+  description: "The combat tracker state of a map.",
+  fields: () => [
+    t.field({ name: "isActive", type: t.NonNull(t.Boolean) }),
+    t.field({ name: "round", type: t.NonNull(t.Int) }),
+    t.field({ name: "currentParticipantId", type: t.ID }),
+    t.field({
+      name: "participants",
+      type: t.NonNull(t.List(t.NonNull(GraphQLCombatParticipantType))),
+    }),
+  ],
+});
+
+const GraphQLCombatParticipantInputType = t.inputObjectType({
+  name: "CombatParticipantInput",
+  fields: () => ({
+    name: { type: t.NonNullInput(t.String) },
+    faction: { type: t.NonNullInput(GraphQLCombatFactionEnum) },
+    color: { type: t.NonNullInput(t.String) },
+    imageUrl: { type: t.String },
+    tokenId: { type: t.ID },
+    isVisibleForPlayers: { type: t.NonNullInput(t.Boolean) },
+  }),
+});
+
+const GraphQLCombatResultType = t.objectType<lib.CombatResult>({
+  name: "CombatResult",
+  fields: () => [
+    t.field({ name: "updatedMap", type: t.NonNull(GraphQLMapType) }),
+  ],
+});
+
+const GraphQLCombatStartInputType = t.inputObjectType({
+  name: "CombatStartInput",
+  fields: () => ({
+    mapId: { type: t.NonNullInput(t.ID) },
+    participants: {
+      type: t.NonNullInput(
+        t.ListInput(t.NonNullInput(GraphQLCombatParticipantInputType))
+      ),
+    },
+  }),
+});
+
+const GraphQLCombatAddParticipantInputType = t.inputObjectType({
+  name: "CombatAddParticipantInput",
+  fields: () => ({
+    mapId: { type: t.NonNullInput(t.ID) },
+    participant: { type: t.NonNullInput(GraphQLCombatParticipantInputType) },
+  }),
+});
+
+const GraphQLCombatRemoveParticipantInputType = t.inputObjectType({
+  name: "CombatRemoveParticipantInput",
+  fields: () => ({
+    mapId: { type: t.NonNullInput(t.ID) },
+    participantId: { type: t.NonNullInput(t.ID) },
+  }),
+});
+
+const GraphQLCombatReorderParticipantsInputType = t.inputObjectType({
+  name: "CombatReorderParticipantsInput",
+  fields: () => ({
+    mapId: { type: t.NonNullInput(t.ID) },
+    participantIds: {
+      type: t.NonNullInput(t.ListInput(t.NonNullInput(t.ID))),
+    },
+  }),
+});
+
+const GraphQLCombatNextTurnInputType = t.inputObjectType({
+  name: "CombatNextTurnInput",
+  fields: () => ({
+    mapId: { type: t.NonNullInput(t.ID) },
+  }),
+});
+
+const GraphQLCombatPreviousTurnInputType = t.inputObjectType({
+  name: "CombatPreviousTurnInput",
+  fields: () => ({
+    mapId: { type: t.NonNullInput(t.ID) },
+  }),
+});
+
+const GraphQLCombatUpdateParticipantInputType = t.inputObjectType({
+  name: "CombatUpdateParticipantInput",
+  fields: () => ({
+    mapId: { type: t.NonNullInput(t.ID) },
+    participantId: { type: t.NonNullInput(t.ID) },
+    name: { type: t.String },
+    faction: { type: GraphQLCombatFactionEnum },
+    isVisibleForPlayers: { type: t.Boolean },
+    isDown: { type: t.Boolean },
+  }),
+});
+
+const GraphQLCombatEndInputType = t.inputObjectType({
+  name: "CombatEndInput",
+  fields: () => ({
+    mapId: { type: t.NonNullInput(t.ID) },
+  }),
+});
 
 const GraphQLMapTokenUpdateManyPropertiesInput = t.inputObjectType({
   name: "MapTokenUpdateManyPropertiesInput",
@@ -614,6 +747,136 @@ export const mutationFields = [
     },
   }),
   t.field({
+    name: "combatStart",
+    description: "Start a new combat on a map with the given participants.",
+    type: t.NonNull(GraphQLCombatResultType),
+    args: {
+      input: t.arg(t.NonNullInput(GraphQLCombatStartInputType)),
+    },
+    resolve: (_, { input }, context) =>
+      RT.run(
+        lib.combatStart({
+          mapId: input.mapId,
+          participants: input.participants.map((participant) => ({
+            name: participant.name,
+            faction: participant.faction as CombatFaction,
+            color: participant.color,
+            imageUrl: participant.imageUrl ?? null,
+            tokenId: participant.tokenId ?? null,
+            isVisibleForPlayers: participant.isVisibleForPlayers,
+          })),
+        }),
+        context
+      ),
+  }),
+  t.field({
+    name: "combatAddParticipant",
+    description: "Add a participant to the ongoing combat.",
+    type: t.NonNull(GraphQLCombatResultType),
+    args: {
+      input: t.arg(t.NonNullInput(GraphQLCombatAddParticipantInputType)),
+    },
+    resolve: (_, { input }, context) =>
+      RT.run(
+        lib.combatAddParticipant({
+          mapId: input.mapId,
+          participant: {
+            name: input.participant.name,
+            faction: input.participant.faction as CombatFaction,
+            color: input.participant.color,
+            imageUrl: input.participant.imageUrl ?? null,
+            tokenId: input.participant.tokenId ?? null,
+            isVisibleForPlayers: input.participant.isVisibleForPlayers,
+          },
+        }),
+        context
+      ),
+  }),
+  t.field({
+    name: "combatRemoveParticipant",
+    description: "Remove a participant from the ongoing combat.",
+    type: t.NonNull(GraphQLCombatResultType),
+    args: {
+      input: t.arg(t.NonNullInput(GraphQLCombatRemoveParticipantInputType)),
+    },
+    resolve: (_, { input }, context) =>
+      RT.run(
+        lib.combatRemoveParticipant({
+          mapId: input.mapId,
+          participantId: input.participantId,
+        }),
+        context
+      ),
+  }),
+  t.field({
+    name: "combatReorderParticipants",
+    description: "Reorder the combat participants (manual drag & drop).",
+    type: t.NonNull(GraphQLCombatResultType),
+    args: {
+      input: t.arg(t.NonNullInput(GraphQLCombatReorderParticipantsInputType)),
+    },
+    resolve: (_, { input }, context) =>
+      RT.run(
+        lib.combatReorderParticipants({
+          mapId: input.mapId,
+          orderedParticipantIds: input.participantIds,
+        }),
+        context
+      ),
+  }),
+  t.field({
+    name: "combatNextTurn",
+    description: "Advance the combat to the next participant's turn.",
+    type: t.NonNull(GraphQLCombatResultType),
+    args: {
+      input: t.arg(t.NonNullInput(GraphQLCombatNextTurnInputType)),
+    },
+    resolve: (_, { input }, context) =>
+      RT.run(lib.combatNextTurn({ mapId: input.mapId }), context),
+  }),
+  t.field({
+    name: "combatPreviousTurn",
+    description: "Go back to the previous participant's turn.",
+    type: t.NonNull(GraphQLCombatResultType),
+    args: {
+      input: t.arg(t.NonNullInput(GraphQLCombatPreviousTurnInputType)),
+    },
+    resolve: (_, { input }, context) =>
+      RT.run(lib.combatPreviousTurn({ mapId: input.mapId }), context),
+  }),
+  t.field({
+    name: "combatUpdateParticipant",
+    description: "Update properties of a combat participant.",
+    type: t.NonNull(GraphQLCombatResultType),
+    args: {
+      input: t.arg(t.NonNullInput(GraphQLCombatUpdateParticipantInputType)),
+    },
+    resolve: (_, { input }, context) =>
+      RT.run(
+        lib.combatUpdateParticipant({
+          mapId: input.mapId,
+          participantId: input.participantId,
+          patch: {
+            name: input.name ?? undefined,
+            faction: (input.faction as CombatFaction | null) ?? undefined,
+            isVisibleForPlayers: input.isVisibleForPlayers ?? undefined,
+            isDown: input.isDown ?? undefined,
+          },
+        }),
+        context
+      ),
+  }),
+  t.field({
+    name: "combatEnd",
+    description: "End the ongoing combat and clear the tracker.",
+    type: t.NonNull(GraphQLCombatResultType),
+    args: {
+      input: t.arg(t.NonNullInput(GraphQLCombatEndInputType)),
+    },
+    resolve: (_, { input }, context) =>
+      RT.run(lib.combatEnd({ mapId: input.mapId }), context),
+  }),
+  t.field({
     name: "rollDice",
     description: "Roll a die and broadcast the result to all map viewers.",
     type: t.Boolean,
@@ -852,6 +1115,20 @@ const GraphQLMapType = t.objectType<MapEntity>({
       name: "weatherSettings",
       description: "The current weather effect on the map.",
       type: t.NonNull(GraphQLWeatherSettingsType),
+    }),
+    t.field({
+      name: "combat",
+      description: "The combat tracker state of the map.",
+      type: t.NonNull(GraphQLCombatStateType),
+      resolve: (source, _, context) =>
+        context.session.role === "admin"
+          ? source.combat
+          : {
+              ...source.combat,
+              participants: source.combat.participants.filter(
+                (participant) => participant.isVisibleForPlayers
+              ),
+            },
     }),
   ],
 });

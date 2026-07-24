@@ -5,6 +5,8 @@ export type TokenType =
   | "hazard"
   | "marker";
 
+export type CombatFaction = "hero" | "enemy" | "neutral";
+
 export type MapGridEntity = {
   color: string;
   offsetX: number;

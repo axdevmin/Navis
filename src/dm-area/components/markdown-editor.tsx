@@ -663,7 +663,7 @@ export const MarkdownEditor: React.FC<{
 
       return task.done.then((result) => {
         if (result.type !== "success") return null;
-        const json = JSON.parse(result.data as string);
+        const json = JSON.parse(result.data);
         return json.data.item.id;
       });
     },

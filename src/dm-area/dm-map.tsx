@@ -100,6 +100,9 @@ import { ErrorBoundary } from "../error-boundary";
 import { UpdateTokenContext } from "../update-token-context";
 import { IsDungeonMasterContext } from "../is-dungeon-master-context";
 import { LazyLoadedMapView } from "../lazy-loaded-map-view";
+import { CombatTracker } from "./combat/combat-tracker";
+import { CombatSetupModal } from "./combat/combat-setup-modal";
+import { dmMap_CombatButton_MapFragment$key } from "./__generated__/dmMap_CombatButton_MapFragment.graphql";
 
 type ToolMapRecord = {
   name: string;
@@ -600,6 +603,46 @@ const WeatherButton = (props: {
   );
 };
 
+const CombatButtonMapFragment = graphql`
+  fragment dmMap_CombatButton_MapFragment on Map {
+    combat {
+      isActive
+    }
+    ...combatSetupModal_MapFragment
+  }
+`;
+
+const CombatButton = (props: {
+  map: dmMap_CombatButton_MapFragment$key;
+}): React.ReactElement => {
+  const map = useFragment(CombatButtonMapFragment, props.map);
+  const [isSetupOpen, setIsSetupOpen] = React.useState(false);
+  const isActive = map.combat.isActive;
+
+  return (
+    <>
+      <Toolbar.Item isActive={isActive}>
+        <Toolbar.Button
+          onClick={() => {
+            if (!isActive) {
+              setIsSetupOpen(true);
+            }
+          }}
+        >
+          <span style={{ fontSize: "18px", lineHeight: 1 }}>⚔️</span>
+          <Icon.Label>Combat</Icon.Label>
+        </Toolbar.Button>
+      </Toolbar.Item>
+      {isSetupOpen ? (
+        <CombatSetupModal
+          map={map}
+          onClose={() => setIsSetupOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+};
+
 const RollDiceMutation = graphql`
   mutation dmMap_RollDiceMutation($input: RollDiceInput!) {
     rollDice(input: $input)
@@ -771,6 +814,8 @@ const DMMapFragment = graphql`
     ...dmMap_GridSettingButton_MapFragment
     ...dmMap_GridConfigurator_MapFragment
     ...dmMap_WeatherButton_MapFragment
+    ...dmMap_CombatButton_MapFragment
+    ...combatTracker_MapFragment
   }
 `;
 
@@ -1010,6 +1055,8 @@ export const DmMap = (props: {
         </ErrorBoundary>
       </React.Suspense>
 
+      <CombatTracker map={map} isEditable={true} />
+
       {toolOverride !== ConfigureGridMapTool ? (
         <>
           <LeftToolbarContainer>
@@ -1110,6 +1157,7 @@ export const DmMap = (props: {
                   }}
                 />
                 <WeatherButton map={map} />
+                <CombatButton map={map} />
                 <DiceButton mapId={map.id} />
                 <TokenLibraryButton />
                 <Toolbar.Item isActive>
@@ -1119,7 +1167,7 @@ export const DmMap = (props: {
                     }}
                   >
                     <Icon.Map boxSize="20px" />
-                    <Icon.Label>Bibliothèque</Icon.Label>
+                    <Icon.Label>Cartes</Icon.Label>
                   </Toolbar.Button>
                 </Toolbar.Item>
                 <Toolbar.Item isActive>
@@ -1128,8 +1176,8 @@ export const DmMap = (props: {
                       props.openMediaLibrary();
                     }}
                   >
-                    <Icon.Image boxSize="20px" />
-                    <Icon.Label>Médias</Icon.Label>
+                    <Icon.BookOpen boxSize="20px" />
+                    <Icon.Label>Bibliothèque</Icon.Label>
                   </Toolbar.Button>
                 </Toolbar.Item>
               </Toolbar.Group>

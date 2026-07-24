@@ -1,7 +1,30 @@
 import * as React from "react";
+import graphql from "babel-plugin-relay/macro";
+import { useQuery } from "relay-hooks";
 import styled from "@emotion/styled/macro";
-import type { TokenType } from "../map-typings";
+import type { CombatFaction, TokenType } from "../map-typings";
 import { buildUrl } from "../public-url";
+import { getFactionMeta } from "./combat/combat-faction";
+import {
+  LIBRARY_CHARACTER_DRAG_TYPE,
+  LibraryCharacterDragPayload,
+} from "./library/library-character-drag-type";
+import { tokenLibrary_Query } from "./__generated__/tokenLibrary_Query.graphql";
+
+const TokenLibraryQuery = graphql`
+  query tokenLibrary_Query {
+    libraryCharacters {
+      id
+      name
+      faction
+      color
+      tokenImage {
+        id
+        url
+      }
+    }
+  }
+`;
 
 const TOKEN_TYPE_COLORS: Record<TokenType, string> = {
   character: "#4488ff",
@@ -289,7 +312,21 @@ const TokenPreviewImage = styled.img`
   pointer-events: none;
 `;
 
+const CharacterAvatarFallback = styled.div<{ color: string }>`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: ${(p) => p.color};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  pointer-events: none;
+`;
+
 export const TokenLibrary = () => {
+  const { data } = useQuery<tokenLibrary_Query>(TokenLibraryQuery);
+
   const onDragStart = (
     ev: React.DragEvent<HTMLButtonElement>,
     preset: TokenPreset
@@ -298,9 +335,55 @@ export const TokenLibrary = () => {
     ev.dataTransfer.effectAllowed = "copy";
   };
 
+  const onCharacterDragStart = (
+    ev: React.DragEvent<HTMLButtonElement>,
+    payload: LibraryCharacterDragPayload
+  ) => {
+    ev.dataTransfer.setData(LIBRARY_CHARACTER_DRAG_TYPE, JSON.stringify(payload));
+    ev.dataTransfer.effectAllowed = "copy";
+  };
+
   return (
     <PanelContainer>
       <PanelHeader>Bibliothèque de tokens</PanelHeader>
+      {data && data.libraryCharacters.length > 0 ? (
+        <React.Fragment>
+          <CategoryTitle>Personnages</CategoryTitle>
+          <TokenGrid>
+            {data.libraryCharacters.map((character) => {
+              const faction = getFactionMeta(character.faction);
+              const payload: LibraryCharacterDragPayload = {
+                label: character.name,
+                faction: character.faction as CombatFaction,
+                color: character.color,
+                imageUrl: character.tokenImage?.url ?? null,
+              };
+              return (
+                <TokenButton
+                  key={character.id}
+                  typeColor={faction.color}
+                  title={`Glisser pour placer : ${character.name}`}
+                  draggable
+                  onDragStart={(ev) => onCharacterDragStart(ev, payload)}
+                >
+                  {character.tokenImage ? (
+                    <TokenPreviewImage
+                      src={character.tokenImage.url}
+                      alt={character.name}
+                      draggable={false}
+                    />
+                  ) : (
+                    <CharacterAvatarFallback color={character.color}>
+                      {faction.emoji}
+                    </CharacterAvatarFallback>
+                  )}
+                  {character.name}
+                </TokenButton>
+              );
+            })}
+          </TokenGrid>
+        </React.Fragment>
+      ) : null}
       {LIBRARY.map((section) => (
         <React.Fragment key={section.category}>
           <CategoryTitle>{section.category}</CategoryTitle>

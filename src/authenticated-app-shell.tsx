@@ -31,7 +31,7 @@ const useShowChatState = () =>
         typeof value !== "string" ||
         ["show", "hidden"].includes(value) === false
       ) {
-        return "show";
+        return "hidden";
       }
       return value as "show" | "hidden";
     },
