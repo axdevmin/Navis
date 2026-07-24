@@ -19,6 +19,7 @@ import {
   MediaType,
   validateMediaTypeExtension,
   getMediaTypeFromExtension,
+  isValidVideoUrl,
 } from "./media-types";
 
 type MapsDependency = {
@@ -188,24 +189,26 @@ export const createMapImageUploadUrl = (params: {
         );
       }
 
-      let record = deps.mapImageUploadRegister.get(params.sha256);
-
       const uuid = randomUUID();
 
       const key = `${params.sha256}_${uuid}`;
 
-      if (!record) {
-        record = {
-          id: key,
-          fileExtension: params.extension,
-          mediaType,
-        };
-      }
+      const record: MapImageUploadRegisterRecord = {
+        id: key,
+        fileExtension: params.extension,
+        mediaType,
+      };
 
       deps.mapImageUploadRegister.set(key, record);
 
+      // The authorization is embedded in the URL so that the upload works
+      // even for clients that do not send the Authorization header.
       return {
-        uploadUrl: `${deps.publicUrl}/files/map-image/${key}.${params.extension}`,
+        uploadUrl: `${deps.publicUrl}/files/map-image/${key}.${
+          params.extension
+        }?authorization=${encodeURIComponent(
+          process.env["DM_PASSWORD"] ?? ""
+        )}`,
         id: key,
       };
     })
@@ -277,6 +280,12 @@ export const mapCreateFromUrl = (params: { title: string; videoUrl: string }) =>
     auth.requireAdmin(),
     RT.chainW(() => RT.ask<MapsDependency>()),
     RT.chain((deps) => () => async (): Promise<MapCreateResult> => {
+      if (isValidVideoUrl(params.videoUrl) === false) {
+        return {
+          type: "error",
+          reason: "The provided video URL is not a valid http(s) URL.",
+        };
+      }
       const createdMap = await deps.maps.createMapFromUrl({
         title: params.title,
         videoUrl: params.videoUrl,

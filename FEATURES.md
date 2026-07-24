@@ -1,6 +1,6 @@
 # Navis — Roadmap
 
-> Dernière mise à jour : 2026-07-24
+> Dernière mise à jour : 2026-07-25
 
 ---
 
@@ -23,6 +23,8 @@
 
 ### Haute priorité
 
+- [ ] **Backup & restauration complète** — export de toutes les données d'une instance (cartes, tokens, personnages de bibliothèque, médias, fog, notes, config) en une archive unique réimportable sur une autre instance sans rien perdre. Nécessite : un endpoint/mutation d'export qui bundle la DB SQLite (notes, tokenImages, libraryCharacters) + les dossiers `data/maps/*` (JSON + images de fog/carte) + `data/files/*` (médias, portraits) ; un import qui restaure proprement en gérant les collisions d'ID ; idéalement testé par un aller-retour export→import→comparaison.
+- [ ] **Stockage externalisé des ressources (S3-compatible)** — remplacer le stockage disque local des images (cartes, tokens, personnages, médias) par un stockage objet externe (S3 / MinIO / Cloudflare R2), avec fallback disque en dev. Prérequis pour fiabiliser le backup ci-dessus à terme (les assets ne dépendent plus du volume de l'instance) et pour une future synchro/sauvegarde cloud des parties.
 - [ ] **Effets de zone** — feu, explosion, foudre, eau (Three.js, persistants DB, mutations `mapEffectAdd/Remove`)
 - [ ] **Sceau magique au sol** — rune / cercle magique persistant sur la carte, dessiné par le DM, couleur + intensité configurable, rendu Three.js (ShaderMaterial ou sprite animé)
 - [ ] **Zones météo exclues** — le DM délimite des polygones/rectangles sur la carte où la météo ne s'applique pas (intérieur, sous un toit) ; les particules pluie/neige sont clippées hors de ces zones
@@ -33,6 +35,7 @@
 
 ### Moyenne priorité
 
+- [ ] **Dissocier mode plateau et mode multijoueur** — séparer clairement le mode "plateau" (un seul écran partagé passif, ex. TV à table, sans identité individuelle) du mode "multijoueur" (chaque joueur se connecte depuis son propre appareil avec sa propre identité : ping, chat, présence). Aujourd'hui mélangés dans la même vue joueur (`isMapOnly` ne couvre qu'une partie du besoin) — à repenser au niveau session/connexion, pas juste affichage.
 - [ ] **Tokens enrichis** — portrait, classe, barre de vie configurable par le DM
 - [ ] **État mort** — token grisé + icône, reste visible, filtrable
 - [ ] **Dialogue bubbles** — bulle texte au-dessus d'un token, durée configurable
@@ -67,7 +70,7 @@
 - **react-three-fiber v5** — Canvas isolé, `ContextBridge`
 - **Three.js 0.126** — `DynamicDrawUsage` + particle systems
 - **GLSL** — fog avec `noise2D` + fbm + domain warping
-- **SQLite3 6** + 4 migrations versionnées (`server/migrations/`)
+- **SQLite3 6** + 5 migrations versionnées (`server/migrations/`)
 - **patch-package** — patches engine.io, react-spring/three, relay-compiler, use-sound
 
 ```bash

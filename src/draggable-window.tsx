@@ -3,6 +3,13 @@ import styled from "@emotion/styled/macro";
 import { animated, useSpring } from "react-spring";
 import { useDrag, useGesture } from "react-use-gesture";
 import { Tooltip } from "@chakra-ui/react";
+
+// Chakra's style props make TypeScript build a union too complex to represent
+// (TS2590) at this call site; the loose alias avoids it.
+const TooltipLoose = Tooltip as React.ComponentType<{
+  [key: string]: unknown;
+  children?: React.ReactNode;
+}>;
 import * as Icon from "./feather-icons";
 import * as Button from "./button";
 import { ds } from "./design-system";
@@ -234,7 +241,7 @@ export const DraggableWindow = ({
         <WindowHeaderTitle>{headerContent}</WindowHeaderTitle>
         {options.map((option) => (
           <div key={option.title}>
-            <Tooltip label={option.title}>
+            <TooltipLoose label={option.title}>
               <Button.Tertiary
                 small
                 iconOnly
@@ -243,7 +250,7 @@ export const DraggableWindow = ({
               >
                 {option.icon}
               </Button.Tertiary>
-            </Tooltip>
+            </TooltipLoose>
           </div>
         ))}
         <Button.Tertiary small iconOnly onClick={close} title="Fermer">

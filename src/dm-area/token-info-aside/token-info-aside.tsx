@@ -13,6 +13,18 @@ import {
   Switch,
   Stack,
 } from "@chakra-ui/react";
+import { loose } from "../../chakra-loose";
+
+const InputLoose = loose(Input);
+const FlexLoose = loose(Flex);
+const VStackLoose = loose(VStack);
+const TooltipLoose = loose(Tooltip);
+const TextLoose = loose(Text);
+const BoxLoose = loose(Box);
+const FormControlLoose = loose(FormControl);
+const FormLabelLoose = loose(FormLabel);
+const SwitchLoose = loose(Switch);
+const StackLoose = loose(Stack);
 import { useNoteWindows, useNoteWindowActions } from ".";
 import { NoteEditorActiveItem } from "../note-editor/note-editor-active-item";
 import { useQuery, useMutation, useFragment } from "relay-hooks";
@@ -138,13 +150,15 @@ const extractNode = (
 const TitleAutoSaveInput = (props: { id: string; title: string }) => {
   const [title, setTitle] = useNoteTitleAutoSave(props.id, props.title);
   return (
-    <Input
+    <InputLoose
       variant="filled"
       size="sm"
       value={title}
       width="100%"
       maxWidth="500px"
-      onChange={(ev) => setTitle(ev.target.value)}
+      onChange={(ev: React.ChangeEvent<HTMLInputElement>) =>
+        setTitle(ev.target.value)
+      }
     />
   );
 };
@@ -186,11 +200,11 @@ const PermissionsMenu = (props: {
         left: props.position.x,
       }}
     >
-      <Stack spacing="2">
-        <FormControl size="xs">
-          <FormLabel fontSize="sm">Access</FormLabel>
+      <StackLoose spacing="2">
+        <FormControlLoose size="xs">
+          <FormLabelLoose fontSize="sm">Access</FormLabelLoose>
           <HorizontalNavigation.Group>
-            <Tooltip label="Only the DM can access this note.">
+            <TooltipLoose label="Only the DM can access this note.">
               <HorizontalNavigation.Button
                 small
                 isActive={data.access === "admin"}
@@ -202,8 +216,8 @@ const PermissionsMenu = (props: {
               >
                 Admin
               </HorizontalNavigation.Button>
-            </Tooltip>
-            <Tooltip label="Everyone can access this note.">
+            </TooltipLoose>
+            <TooltipLoose label="Everyone can access this note.">
               <HorizontalNavigation.Button
                 small
                 isActive={data.access === "public"}
@@ -215,19 +229,19 @@ const PermissionsMenu = (props: {
               >
                 Public
               </HorizontalNavigation.Button>
-            </Tooltip>
+            </TooltipLoose>
           </HorizontalNavigation.Group>
-        </FormControl>
-        <Tooltip label="Whether the note is a entry point.">
-          <FormControl display="flex" alignItems="center" size="xs">
-            <FormLabel fontSize="sm" htmlFor="is-entry-point-toggle" mb="0">
+        </FormControlLoose>
+        <TooltipLoose label="Whether the note is a entry point.">
+          <FormControlLoose display="flex" alignItems="center" size="xs">
+            <FormLabelLoose fontSize="sm" htmlFor="is-entry-point-toggle" mb="0">
               Entry Point
-            </FormLabel>
-            <Switch
+            </FormLabelLoose>
+            <SwitchLoose
               size="sm"
               id="is-entry-point-toggle"
               isChecked={data.isEntryPoint}
-              onChange={(ev) => {
+              onChange={(ev: React.ChangeEvent<HTMLInputElement>) => {
                 updateIsEntryPoint({
                   variables: {
                     input: { id: data.id, isEntryPoint: ev.target.checked },
@@ -243,9 +257,9 @@ const PermissionsMenu = (props: {
                 });
               }}
             />
-          </FormControl>
-        </Tooltip>
-      </Stack>
+          </FormControlLoose>
+        </TooltipLoose>
+      </StackLoose>
     </PermissionMenuContainer>
   );
 };
@@ -414,7 +428,7 @@ const WindowRenderer = (props: {
         }}
         headerLeftContent={
           <>
-            <Tooltip label="Open library">
+            <TooltipLoose label="Open library">
               <Button.Tertiary
                 small
                 iconOnly
@@ -422,9 +436,9 @@ const WindowRenderer = (props: {
               >
                 <Icon.BookOpen boxSize="16px" />
               </Button.Tertiary>
-            </Tooltip>
+            </TooltipLoose>
             {isDm ? (
-              <Tooltip label="Create new note">
+              <TooltipLoose label="Create new note">
                 <Button.Tertiary
                   small
                   iconOnly
@@ -434,7 +448,7 @@ const WindowRenderer = (props: {
                 >
                   <Icon.FilePlus boxSize="16px" />
                 </Button.Tertiary>
-              </Tooltip>
+              </TooltipLoose>
             ) : null}
 
             <Button.Tertiary
@@ -504,11 +518,11 @@ const WindowRenderer = (props: {
                 "Chargement..."
               ) : isSkipped ? (
                 <>
-                  <VStack>
+                  <VStackLoose>
                     {viewerRole === "DM" ? (
                       <>
-                        <Text>Ouvrir ou créer une nouvelle note</Text>
-                        <Box>
+                        <TextLoose>Ouvrir ou créer une nouvelle note</TextLoose>
+                        <BoxLoose>
                           <Button.Primary
                             small
                             onClick={() => {
@@ -518,12 +532,12 @@ const WindowRenderer = (props: {
                             <Icon.FilePlus boxSize="16px" />
                             <span>Créer une note</span>
                           </Button.Primary>
-                        </Box>
+                        </BoxLoose>
                       </>
                     ) : (
-                      <Text>Ouvrir une note !</Text>
+                      <TextLoose>Ouvrir une note !</TextLoose>
                     )}
-                  </VStack>
+                  </VStackLoose>
                 </>
               ) : (
                 "Cette note n'existe plus."
@@ -538,12 +552,12 @@ const WindowRenderer = (props: {
         }}
         sideBarContent={
           showLibrary ? (
-            <Flex height="100%" flexDirection="column">
+            <FlexLoose height="100%" flexDirection="column">
               <TokenInfoSideBar
                 windowId={props.windowId}
                 activeNoteId={props.noteId}
               />
-            </Flex>
+            </FlexLoose>
           ) : null
         }
       />

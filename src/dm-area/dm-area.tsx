@@ -3,6 +3,12 @@ import * as React from "react";
 import useAsyncEffect from "@n1ru4l/use-async-effect";
 import styled from "@emotion/styled/macro";
 import { Box, Center, Heading, Text } from "@chakra-ui/react";
+import { loose } from "../chakra-loose";
+
+const BoxLoose = loose(Box);
+const CenterLoose = loose(Center);
+const HeadingLoose = loose(Heading);
+const TextLoose = loose(Text);
 import { commitMutation } from "relay-runtime";
 import { useQuery, useRelayEnvironment } from "relay-hooks";
 import graphql from "babel-plugin-relay/macro";
@@ -346,12 +352,12 @@ const Content = ({
           />
         ) : null}
         {dmAreaResponse.error ? (
-          <Center height="100vh" flexDirection="column" color="white">
-            <Heading size="lg" mb={4}>
+          <CenterLoose height="100vh" flexDirection="column" color="white">
+            <HeadingLoose size="lg" mb={4}>
               Erreur de chargement
-            </Heading>
-            <Text>{dmAreaResponse.error.message}</Text>
-          </Center>
+            </HeadingLoose>
+            <TextLoose>{dmAreaResponse.error.message}</TextLoose>
+          </CenterLoose>
         ) : null}
         {mode.title === "MEDIA_LIBRARY" ? (
           <MediaLibrary
@@ -515,7 +521,7 @@ const Content = ({
           >
             {cropperNode}
             {isDraggingFile ? (
-              <Center
+              <CenterLoose
                 position="absolute"
                 top="0"
                 width="100%"
@@ -564,7 +570,7 @@ const Content = ({
                 >
                   Import Map or Media Library Item
                 </DropZone>
-              </Center>
+              </CenterLoose>
             ) : null}
             <div
               style={{
@@ -702,7 +708,7 @@ type DropZoneProps = {
 
 const DropZone = (props: DropZoneProps): React.ReactElement => {
   return (
-    <Box
+    <BoxLoose
       padding="2"
       background="rgba(13,15,20,0.85)"
       borderRadius="10px"
@@ -713,7 +719,7 @@ const DropZone = (props: DropZoneProps): React.ReactElement => {
       onDragLeave={props.onDragLeave}
       onDrop={props.onDrop}
     >
-      <Box padding="2">{props.children}</Box>
-    </Box>
+      <BoxLoose padding="2">{props.children}</BoxLoose>
+    </BoxLoose>
   );
 };

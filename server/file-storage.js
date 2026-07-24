@@ -119,7 +119,7 @@ const createDatabaseInterface = (db) => {
    * @param {string} id
    */
   const deleteRecordById = (id) =>
-    getDeleteRecordByIdStatement().then((statement) => statement.get(id));
+    getDeleteRecordByIdStatement().then((statement) => statement.run(id));
 
   const getUpdateTitleWhereIdStatement = lazy(() =>
     db.prepare(`
@@ -134,7 +134,7 @@ const createDatabaseInterface = (db) => {
 
   const updateTitleWhereId = (id, title) =>
     getUpdateTitleWhereIdStatement().then((statement) =>
-      statement.get(title, id)
+      statement.run(title, id)
     );
 
   return {
@@ -155,8 +155,17 @@ class FileStorage {
   }
 
   async store({ fileName: originalFileName, filePath, fileExtension }) {
+    // The extension ends up in a filesystem path: only accept plain
+    // alphanumeric extensions to rule out any path traversal attempt.
+    if (
+      typeof fileExtension !== "string" ||
+      /^[a-z0-9]{1,10}$/i.test(fileExtension) === false
+    ) {
+      throw new Error(`Invalid file extension '${fileExtension}'.`);
+    }
+
     const id = randomUUID();
-    const fileName = `${id}.${fileExtension}`;
+    const fileName = `${id}.${fileExtension.toLowerCase()}`;
     const destinationPath = path.join(this._storageDirectoryPath, fileName);
     const relativeDestinationPath = path.relative(
       this._storageDirectoryPath,
@@ -189,9 +198,13 @@ class FileStorage {
   async deleteById(id) {
     const file = await this.getById(id);
     if (!file) return;
-    await fs.unlink(
-      path.resolve(path.join(this._storageDirectoryPath, file.path))
-    );
+    // Delete the database record even if the file is already gone from disk,
+    // otherwise the record can never be removed.
+    await fs
+      .unlink(path.resolve(path.join(this._storageDirectoryPath, file.path)))
+      .catch((err) => {
+        if (err.code !== "ENOENT") throw err;
+      });
     await this._db.deleteRecordById(id);
   }
 

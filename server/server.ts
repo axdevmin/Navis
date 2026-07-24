@@ -89,9 +89,9 @@ export const bootstrapServer = async (env: ReturnType<typeof getEnv>) => {
     const authParam = req.query.authorization;
     let token = null;
 
-    if (authHeader) {
-      token = req.headers.authorization!.split(" ")[1];
-    } else if (authParam) {
+    if (typeof authHeader === "string") {
+      token = authHeader.split(" ")[1] ?? null;
+    } else if (typeof authParam === "string") {
       token = authParam;
     }
 

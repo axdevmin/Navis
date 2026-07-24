@@ -11,6 +11,14 @@ import {
   ViewportData,
 } from "react-three-fiber";
 import { animated, useSpring, SpringValue, to } from "@react-spring/three";
+
+// The combination of react-spring and react-three-fiber types makes TypeScript
+// hit its instantiation depth limit (TS2589) on this element; the loose alias
+// keeps the compiler happy without changing runtime behavior.
+const AnimatedMeshStandardMaterial =
+  animated.meshStandardMaterial as unknown as React.ComponentType<{
+    [key: string]: unknown;
+  }>;
 import { useGesture } from "react-use-gesture";
 import styled from "@emotion/styled/macro";
 import { darken, lighten } from "polished";
@@ -1278,7 +1286,7 @@ const MarkedAreaRenderer: React.FC<{
         attach="geometry"
         args={[initialRadius * (1 - 0.05), initialRadius, 128]}
       />
-      <animated.meshStandardMaterial
+      <AnimatedMeshStandardMaterial
         attach="material"
         color={"red"}
         transparent

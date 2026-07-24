@@ -95,6 +95,8 @@ export const requestTokenImageUpload = (params: {
     )
   );
 
+const validTokenImageExtensions = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+
 export const createTokenImageUploadRequestUrl = (params: {
   sha256: string;
   extension: string;
@@ -102,6 +104,17 @@ export const createTokenImageUploadRequestUrl = (params: {
   pipe(
     RT.ask<TokenImageUploadRegisterDependency>(),
     RT.chain((deps) => () => {
+      if (
+        validTokenImageExtensions.includes(params.extension.toLowerCase()) ===
+        false
+      ) {
+        return () =>
+          Promise.reject(
+            new Error(
+              `Extension '.${params.extension}' is not a valid token image extension.`
+            )
+          );
+      }
       let record = deps.tokenImageUploadRegister.get(params.sha256);
 
       if (!record) {
@@ -113,9 +126,15 @@ export const createTokenImageUploadRequestUrl = (params: {
       }
 
       deps.tokenImageUploadRegister.set(params.sha256, record);
+      // The authorization is embedded in the URL so that the upload works
+      // even for clients that do not send the Authorization header.
       return () =>
         Promise.resolve(
-          `${deps.publicUrl}/files/token-image/${params.sha256}.${params.extension}`
+          `${deps.publicUrl}/files/token-image/${params.sha256}.${
+            params.extension
+          }?authorization=${encodeURIComponent(
+            process.env["DM_PASSWORD"] ?? ""
+          )}`
         );
     })
   );

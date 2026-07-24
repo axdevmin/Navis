@@ -14,6 +14,17 @@ import {
   FormLabel,
   Switch,
 } from "@chakra-ui/react";
+import { loose } from "../../chakra-loose";
+
+const FormControlLoose = loose(FormControl);
+const FormLabelLoose = loose(FormLabel);
+const SwitchLoose = loose(Switch);
+const InputLoose = loose(Input);
+const BoxLoose = loose(Box);
+const InputGroupLoose = loose(InputGroup);
+const InputLeftElementLoose = loose(InputLeftElement);
+const InputRightElementLoose = loose(InputRightElement);
+const ButtonLoose = loose(Button);
 import * as Icon from "../../feather-icons";
 import { useCurrent } from "../../hooks/use-current";
 import { tokenInfoSideBar_NotesFragment$key } from "./__generated__/tokenInfoSideBar_NotesFragment.graphql";
@@ -184,16 +195,18 @@ const TokenInfoSideBarRenderer = (props: {
           </ScrollableList.ListItem>
         ))}
       </ScrollableList.List>
-      <FormControl display="flex" alignItems="center" padding="2">
-        <FormLabel htmlFor="show-entrypoints" mb="0">
+      <FormControlLoose display="flex" alignItems="center" padding="2">
+        <FormLabelLoose htmlFor="show-entrypoints" mb="0">
           Show all notes
-        </FormLabel>
-        <Switch
+        </FormLabelLoose>
+        <SwitchLoose
           id="show-entrypoints"
           isChecked={props.showAll}
-          onChange={(ev) => props.setShowAll(ev.target.checked)}
+          onChange={(ev: React.ChangeEvent<HTMLInputElement>) =>
+            props.setShowAll(ev.target.checked)
+          }
         />
-      </FormControl>
+      </FormControlLoose>
     </>
   );
 };
@@ -290,26 +303,28 @@ export const TokenInfoSideBar = (props: {
   }
   return (
     <>
-      <Box padding="2" height="50px" borderBottom="1px solid lightgray">
-        <InputGroup size="sm">
-          <InputLeftElement
+      <BoxLoose padding="2" height="50px" borderBottom="1px solid lightgray">
+        <InputGroupLoose size="sm">
+          <InputLeftElementLoose
             pointerEvents="none"
             children={<Icon.Search stroke="gray" boxSize="16px" />}
           />
-          <Input
+          <InputLoose
             placeholder="Search Note"
             value={filter}
-            onChange={(ev) => setFilter(ev.target.value)}
+            onChange={(ev: React.ChangeEvent<HTMLInputElement>) =>
+              setFilter(ev.target.value)
+            }
           />
           {filter !== "" ? (
-            <InputRightElement width="3.5rem">
-              <Button h="1.5rem" size="xs" onClick={() => setFilter("")}>
+            <InputRightElementLoose width="3.5rem">
+              <ButtonLoose h="1.5rem" size="xs" onClick={() => setFilter("")}>
                 Clear
-              </Button>
-            </InputRightElement>
+              </ButtonLoose>
+            </InputRightElementLoose>
           ) : null}
-        </InputGroup>
-      </Box>
+        </InputGroupLoose>
+      </BoxLoose>
       {filter !== "" && cachedData?.data ? (
         <ScrollableList.List>
           {cachedData.data.notesSearch.edges.map((edge) => (

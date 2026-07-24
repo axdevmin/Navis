@@ -26,6 +26,28 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
+import { loose } from "../chakra-loose";
+
+const ButtonLoose = loose(Button);
+const HStackLoose = loose(HStack);
+const PopoverLoose = loose(Popover);
+const PopoverBodyLoose = loose(PopoverBody);
+const PopoverCloseButtonLoose = loose(PopoverCloseButton);
+const PopoverContentLoose = loose(PopoverContent);
+const PopoverFooterLoose = loose(PopoverFooter);
+const PopoverHeaderLoose = loose(PopoverHeader);
+const PopoverTriggerLoose = loose(PopoverTrigger);
+const PortalLoose = loose(Portal);
+const BoxLoose = loose(Box);
+const InputLoose = loose(Input);
+const InputLeftElementLoose = loose(InputLeftElement);
+const InputGroupLoose = loose(InputGroup);
+const InputRightElementLoose = loose(InputRightElement);
+const SimpleGridLoose = loose(SimpleGrid);
+const ImageLoose = loose(Image);
+const CenterLoose = loose(Center);
+const TextLoose = loose(Text);
+const VStackLoose = loose(VStack);
 import graphql from "babel-plugin-relay/macro";
 import * as Icon from "../feather-icons";
 import { usePagination, useQuery } from "relay-hooks";
@@ -42,23 +64,23 @@ const TokenImageReference = () => {
 
   return (
     <>
-      <Portal>{node}</Portal>
+      <PortalLoose>{node}</PortalLoose>
       <Row input>
         <Label>Image</Label>
-        <HStack alignItems="center" spacing={1}>
+        <HStackLoose alignItems="center" spacing={1}>
           {displayValue ? (
             <>
-              <Box>
-                <Popover
+              <BoxLoose>
+                <PopoverLoose
                   isLazy
                   placement="top-start"
                   closeOnBlur={node === null}
                 >
-                  <PopoverTrigger>
-                    <Button size="xs">Change</Button>
-                  </PopoverTrigger>
-                  <Portal>
-                    <PopoverContent
+                  <PopoverTriggerLoose>
+                    <ButtonLoose size="xs">Change</ButtonLoose>
+                  </PopoverTriggerLoose>
+                  <PortalLoose>
+                    <PopoverContentLoose
                       width="400px"
                       bg="#1a1b2e"
                       borderColor="#333366"
@@ -70,41 +92,41 @@ const TokenImageReference = () => {
                           selectFile(file, [connection])
                         }
                       />
-                    </PopoverContent>
-                  </Portal>
-                </Popover>
-              </Box>
-              <Box>
-                <Button
+                    </PopoverContentLoose>
+                  </PortalLoose>
+                </PopoverLoose>
+              </BoxLoose>
+              <BoxLoose>
+                <ButtonLoose
                   size="xs"
                   onClick={() => {
                     setValue(null);
                   }}
                 >
                   Remove
-                </Button>
-              </Box>
+                </ButtonLoose>
+              </BoxLoose>
             </>
           ) : (
-            <Box>
-              <Popover isLazy placement="top-start" closeOnBlur={node === null}>
-                <PopoverTrigger>
-                  <Button size="xs">Add</Button>
-                </PopoverTrigger>
-                <Portal>
-                  <PopoverContent width="400px">
+            <BoxLoose>
+              <PopoverLoose isLazy placement="top-start" closeOnBlur={node === null}>
+                <PopoverTriggerLoose>
+                  <ButtonLoose size="xs">Add</ButtonLoose>
+                </PopoverTriggerLoose>
+                <PortalLoose>
+                  <PopoverContentLoose width="400px">
                     <TokenImagePopoverContent
                       onSelect={(value) => setValue(value)}
                       onSelectFile={(file, connection) =>
                         selectFile(file, [connection])
                       }
                     />
-                  </PopoverContent>
-                </Portal>
-              </Popover>
-            </Box>
+                  </PopoverContentLoose>
+                </PortalLoose>
+              </PopoverLoose>
+            </BoxLoose>
           )}
-        </HStack>
+        </HStackLoose>
       </Row>
     </>
   );
@@ -157,9 +179,9 @@ const TokenImageList = (props: {
   const elementRef = React.useRef<HTMLDivElement>(null);
   return (
     <>
-      <PopoverHeader>Select Token Image</PopoverHeader>
-      <PopoverCloseButton />
-      <PopoverBody
+      <PopoverHeaderLoose>Select Token Image</PopoverHeaderLoose>
+      <PopoverCloseButtonLoose />
+      <PopoverBodyLoose
         height="200px"
         overflowY="scroll"
         ref={elementRef}
@@ -175,57 +197,57 @@ const TokenImageList = (props: {
           }
         }}
       >
-        <SimpleGrid columns={4} spacing={2}>
+        <SimpleGridLoose columns={4} spacing={2}>
           {pagination.data.tokenImages?.edges.map((edge) => (
-            <Center key={edge.node.id}>
-              <VStack
+            <CenterLoose key={edge.node.id}>
+              <VStackLoose
                 as="button"
                 spacing={0}
                 onClick={() => props.onSelect(edge.node.id)}
               >
-                <Image
+                <ImageLoose
                   borderRadius="full"
                   boxSize="50px"
                   src={edge.node.url}
                   alt={edge.node.title}
                 />
-                <Text fontSize="xs" noOfLines={1}>
+                <TextLoose fontSize="xs" noOfLines={1}>
                   {edge.node.title}
-                </Text>
-              </VStack>
-            </Center>
+                </TextLoose>
+              </VStackLoose>
+            </CenterLoose>
           ))}
-        </SimpleGrid>
-      </PopoverBody>
-      <PopoverFooter>
-        <HStack alignItems="center" justifyContent="flex-end" spacing={1}>
-          <Box marginRight="auto" marginLeft={0}>
-            <InputGroup size="xs">
-              <InputLeftElement
+        </SimpleGridLoose>
+      </PopoverBodyLoose>
+      <PopoverFooterLoose>
+        <HStackLoose alignItems="center" justifyContent="flex-end" spacing={1}>
+          <BoxLoose marginRight="auto" marginLeft={0}>
+            <InputGroupLoose size="xs">
+              <InputLeftElementLoose
                 pointerEvents="none"
                 children={<Icon.Filter color="gray.300" />}
               />
-              <Input
+              <InputLoose
                 variant="flushed"
                 placeholder="Filter"
                 value={props.titleFilter}
-                onChange={(ev) => {
+                onChange={(ev: React.ChangeEvent<HTMLInputElement>) => {
                   props.setTitleFilter(ev.target.value);
                 }}
               />
-              <InputRightElement width="1rem">
+              <InputRightElementLoose width="1rem">
                 {props.titleFilter !== "" ? (
-                  <Button
+                  <ButtonLoose
                     size="xs"
                     onClick={() => props.setTitleFilter("")}
                     variant="unstyled"
                   >
                     <Icon.X color="black" />
-                  </Button>
+                  </ButtonLoose>
                 ) : null}
-              </InputRightElement>
-            </InputGroup>
-          </Box>
+              </InputRightElementLoose>
+            </InputGroupLoose>
+          </BoxLoose>
           <input
             style={{ display: "none" }}
             ref={inputRef}
@@ -242,17 +264,17 @@ const TokenImageList = (props: {
             }}
           />
           {props.titleFilter === "" ? (
-            <Button
+            <ButtonLoose
               size="xs"
               onClick={() => {
                 inputRef.current?.click();
               }}
             >
               Upload new Image
-            </Button>
+            </ButtonLoose>
           ) : null}
-        </HStack>
-      </PopoverFooter>
+        </HStackLoose>
+      </PopoverFooterLoose>
     </>
   );
 };

@@ -25,38 +25,56 @@ import { randomHash } from "../../utilities/random-hash";
 import { processUserStyleSheet } from "../../utilities/process-user-style-sheet";
 import { useUserStyleSheetOrchestrator } from "../../user-style-sheet-orchestrator";
 
-const H1: React.FC = (props) => <Heading as="h1">{props.children}</Heading>;
+// Chakra's polymorphic "as" prop makes TypeScript build a union too complex
+// to represent (TS2590) at these call sites; the loose alias avoids it.
+const HeadingLoose = Heading as React.ComponentType<{
+  [key: string]: unknown;
+}>;
+const TextLoose = Text as React.ComponentType<{
+  [key: string]: unknown;
+}>;
+
+const H1: React.FC = (props) => (
+  <HeadingLoose as="h1">{props.children}</HeadingLoose>
+);
 const H2: React.FC = (props) => (
-  <Heading as="h2" size="md">
+  <HeadingLoose as="h2" size="md">
     {props.children}
-  </Heading>
+  </HeadingLoose>
 );
 const H3: React.FC = (props) => (
-  <Heading as="h3" size="sm">
+  <HeadingLoose as="h3" size="sm">
     {props.children}
-  </Heading>
+  </HeadingLoose>
 );
 const H4: React.FC = (props) => (
-  <Heading as="h4" size="xs">
+  <HeadingLoose as="h4" size="xs">
     {props.children}
-  </Heading>
+  </HeadingLoose>
 );
 
-const components = {
-  Image: SharableImage,
-  ChatMessage: ChatMessageButton,
-  ChatMacro: ChatMessageButton,
-  Link: NoteLink,
-  Checkbox: Checkbox,
+// The individual casts prevent TypeScript from building the full union of all
+// chakra component prop types (TS2590).
+const asLooseComponent = (component: unknown) =>
+  component as React.FunctionComponent<any>;
+
+const components: Record<string, React.FunctionComponent<any>> = {
+  Image: asLooseComponent(SharableImage),
+  ChatMessage: asLooseComponent(ChatMessageButton),
+  ChatMacro: asLooseComponent(ChatMessageButton),
+  Link: asLooseComponent(NoteLink),
+  Checkbox: asLooseComponent(Checkbox),
   h1: H1,
   h2: H2,
   h3: H3,
   h4: H4,
-  ul: UnorderedList,
-  ol: OrderedList,
-  li: ListItem,
-  hr: Divider,
-  p: (props: React.ComponentProps<typeof Text>) => <Text {...props} as="div" />,
+  ul: asLooseComponent(UnorderedList),
+  ol: asLooseComponent(OrderedList),
+  li: asLooseComponent(ListItem),
+  hr: asLooseComponent(Divider),
+  p: (props: { children?: React.ReactNode }) => (
+    <TextLoose as="div">{props.children}</TextLoose>
+  ),
 };
 
 const allowedTags = [

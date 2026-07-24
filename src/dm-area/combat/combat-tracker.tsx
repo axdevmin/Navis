@@ -43,6 +43,7 @@ const CombatTrackerMapFragment = graphql`
         imageUrl
         isVisibleForPlayers
         isDown
+        tokenId
       }
     }
   }
@@ -477,6 +478,18 @@ const InitiativeBadge = styled.span`
   text-align: right;
 `;
 
+const TokenLinkBadge = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: ${ds.colors.accent};
+  opacity: 0.8;
+
+  svg {
+    stroke: currentColor;
+  }
+`;
+
 const RowActions = styled.div`
   display: flex;
   align-items: center;
@@ -604,6 +617,19 @@ export const CombatTracker = (props: {
 
   const combat = map.combat;
   const mapId = map.id;
+
+  // Automatically keep the active participant visible: with many participants
+  // the list scrolls down as the round advances and jumps back to the top on
+  // a new round. Useful on player screens projected on a table where nobody
+  // can scroll manually.
+  const listRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!combat.isActive || !combat.currentParticipantId || collapsed) return;
+    const row = listRef.current?.querySelector(
+      `[data-participant-id="${combat.currentParticipantId}"]`
+    );
+    row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [combat.isActive, combat.currentParticipantId, collapsed]);
 
   React.useEffect(() => {
     if (!props.isEditable || !combat.isActive) return;
@@ -761,6 +787,7 @@ export const CombatTracker = (props: {
             </AddForm>
           ) : null}
           <List
+            ref={listRef}
             onDragOver={(ev) => {
               if (
                 props.isEditable &&
@@ -829,6 +856,7 @@ export const CombatTracker = (props: {
                 return (
                   <Row
                     key={participant.id}
+                    data-participant-id={participant.id}
                     isCurrent={isCurrent}
                     isDragOver={dragOverId === participant.id}
                     draggable={props.isEditable}
@@ -895,6 +923,11 @@ export const CombatTracker = (props: {
                         {participant.name}
                       </Name>
                     )}
+                    {props.isEditable && participant.tokenId ? (
+                      <TokenLinkBadge title="Lié à un token sur la carte">
+                        <Icon.Target boxSize="12px" />
+                      </TokenLinkBadge>
+                    ) : null}
                     <InitiativeBadge>{participant.initiative}</InitiativeBadge>
                     {props.isEditable ? (
                       <RowActions>

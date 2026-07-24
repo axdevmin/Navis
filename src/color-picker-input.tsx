@@ -11,6 +11,13 @@ import * as React from "react";
 import { RgbaStringColorPicker } from "react-colorful";
 import { isColor } from "./color-lib";
 import { useResetState } from "./hooks/use-reset-state";
+import { loose } from "./chakra-loose";
+
+const InputLoose = loose(Input);
+const InputGroupLoose = loose(InputGroup);
+const PopoverContentLoose = loose(PopoverContent);
+const BoxLoose = loose(Box);
+const InputRightElementLoose = loose(InputRightElement);
 
 export const ColorPickerInput = (props: {
   size?: string;
@@ -22,10 +29,10 @@ export const ColorPickerInput = (props: {
 
   const Picker = RgbaStringColorPicker;
   return (
-    <InputGroup size={props.size} width={props.width}>
-      <Input
+    <InputGroupLoose size={props.size} width={props.width}>
+      <InputLoose
         value={value}
-        onChange={(ev) => {
+        onChange={(ev: React.ChangeEvent<HTMLInputElement>) => {
           const value = ev.target.value;
           if (isColor(value)) {
             props.onChange(value);
@@ -33,14 +40,14 @@ export const ColorPickerInput = (props: {
           setValue(ev.target.value);
         }}
       />
-      <InputRightElement
+      <InputRightElementLoose
         paddingRight="0"
         width="55px"
         children={
           <>
             <Popover closeOnBlur={false} isLazy>
               <PopoverTrigger>
-                <Box
+                <BoxLoose
                   as="button"
                   backgroundColor={value}
                   width="55px"
@@ -49,7 +56,7 @@ export const ColorPickerInput = (props: {
                   borderLeft="1px solid #E2E8F0"
                 />
               </PopoverTrigger>
-              <PopoverContent width="max-content" p={2}>
+              <PopoverContentLoose width="max-content" p={2}>
                 <div style={{ height: 200, width: 200 }}>
                   <Picker
                     color={value}
@@ -59,11 +66,11 @@ export const ColorPickerInput = (props: {
                     }}
                   />
                 </div>
-              </PopoverContent>
+              </PopoverContentLoose>
             </Popover>
           </>
         }
       />
-    </InputGroup>
+    </InputGroupLoose>
   );
 };

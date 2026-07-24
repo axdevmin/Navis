@@ -1,6 +1,10 @@
 import * as React from "react";
 import styled from "@emotion/styled/macro";
 import { Flex, Box } from "@chakra-ui/react";
+import { loose } from "../chakra-loose";
+
+const FlexLoose = loose(Flex);
+const BoxLoose = loose(Box);
 import MonacoEditor from "@monaco-editor/react";
 import type * as monacoEditor from "monaco-editor/esm/vs/editor/editor.api";
 import * as Icon from "../feather-icons";
@@ -80,7 +84,7 @@ Here are some more examples:
 It is also possible to declare re-usable templates.
 
 <Template id="attackTemplate">
-  <Box>
+  <BoxLoose>
     <BoxRow>
       **<span style="color:red">Attack with {{weapon}}</span>**
     </BoxRow>
@@ -100,7 +104,7 @@ It is also possible to declare re-usable templates.
         {{damageRollFormula}}
       </BoxColumn>
     </BoxRow>
-  </Box>
+  </BoxLoose>
 </Template>
 
 <ChatMacro
@@ -177,9 +181,9 @@ export const DiceRollNotes: React.FC<{ close: () => void }> = ({ close }) => {
         },
       ]}
       bodyContent={
-        <Flex maxHeight="100%" height="100%">
+        <FlexLoose maxHeight="100%" height="100%">
           {mode === "write" ? (
-            <Box maxWidth="50%" flex="1">
+            <BoxLoose maxWidth="50%" flex="1">
               <MonacoEditor
                 language="markdown"
                 options={{
@@ -201,14 +205,14 @@ export const DiceRollNotes: React.FC<{ close: () => void }> = ({ close }) => {
                   editorRef.current = editor;
                 }}
               />
-            </Box>
+            </BoxLoose>
           ) : null}
-          <Box flex="1">
+          <BoxLoose flex="1">
             <WindowContent>
               <HtmlContainer markdown={content} />
             </WindowContent>
-          </Box>
-        </Flex>
+          </BoxLoose>
+        </FlexLoose>
       }
       close={close}
       onKeyDown={(ev) => {

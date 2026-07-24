@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs-extra";
 import junk from "junk";
 import { randomUUID } from "crypto";
-import { MediaType } from "./media-types";
+import { MediaType, getMediaTypeFromExtension } from "./media-types";
 
 const isDirectory = (source: string) => fs.lstatSync(source).isDirectory();
 
@@ -13,7 +13,7 @@ const prepareToken = (token: { [key: string]: unknown }) => {
   if (typeof token.title !== "string") {
     token.title = "";
   }
-  if (typeof token.title !== "string") {
+  if (typeof token.description !== "string") {
     token.description = "";
   }
   if (token.isLocked === undefined) {
@@ -270,12 +270,25 @@ export class Maps {
       .map((id) => this._buildMapFolderPath(id))
       .filter(isDirectory);
 
-    return mapDirectories.map((directory) => {
-      const rawConfig = fs.readFileSync(
-        path.join(directory, "settings.json"),
-        "utf-8"
-      );
-      const rawMap = JSON.parse(rawConfig) as LegacyMapEntity | MapEntity;
+    const maps: Array<MapEntity> = [];
+
+    for (const directory of mapDirectories) {
+      let rawMap: LegacyMapEntity | MapEntity;
+      try {
+        const rawConfig = fs.readFileSync(
+          path.join(directory, "settings.json"),
+          "utf-8"
+        );
+        rawMap = JSON.parse(rawConfig) as LegacyMapEntity | MapEntity;
+      } catch (err) {
+        // A single corrupt or incomplete map folder must not prevent the
+        // server from starting.
+        console.error(
+          `[maps] Skipping invalid map folder '${directory}':`,
+          err
+        );
+        continue;
+      }
       const map: MapEntity = {
         id: rawMap.id,
         title: rawMap.title,
@@ -296,9 +309,7 @@ export class Maps {
             ? rawMap.fogProgressRevision
             : randomUUID(),
         fogLiveRevision:
-          "fogLiveRevision" in rawMap
-            ? rawMap.fogProgressRevision
-            : randomUUID(),
+          "fogLiveRevision" in rawMap ? rawMap.fogLiveRevision : randomUUID(),
         mediaType:
           "mediaType" in rawMap && rawMap.mediaType
             ? rawMap.mediaType
@@ -314,8 +325,10 @@ export class Maps {
         ),
       };
 
-      return map;
-    });
+      maps.push(map);
+    }
+
+    return maps;
   }
 
   getBasePath(map: { id: string }) {
@@ -343,7 +356,7 @@ export class Maps {
   }) {
     const id = randomUUID();
     return this._processTask<MapEntity>(`map:${id}`, async () => {
-      fs.mkdirp(this._buildMapFolderPath(id));
+      await fs.mkdirp(this._buildMapFolderPath(id));
       const mapPath = `map${fileExtension ? `.${fileExtension}` : ``}`;
       const map: MapEntity = {
         id,
@@ -516,15 +529,25 @@ export class Maps {
       if (!map) {
         throw new Error(`Map with id "${id}" not found.`);
       }
-      if (map.mapPath) {
-        await fs.remove(map.mapPath);
+      // The old media file lives inside the map folder ("mapPath" is
+      // relative to it). For "video-url" maps "mapPath" is an external URL:
+      // there is nothing to delete on disk.
+      if (map.mapPath && map.mediaType !== "video-url") {
+        await fs.remove(path.join(this._buildMapFolderPath(map.id), map.mapPath));
       }
 
       const fileName = `map${fileExtension ? `.${fileExtension}` : ``}`;
       const destination = path.join(this._buildMapFolderPath(map.id), fileName);
-      await fs.move(filePath, destination);
+      await fs.move(filePath, destination, { overwrite: true });
 
-      const result = await this._updateMapSettings(map, { mapPath: fileName });
+      const mediaType = fileExtension
+        ? getMediaTypeFromExtension(fileExtension) ?? "image"
+        : "image";
+
+      const result = await this._updateMapSettings(map, {
+        mapPath: fileName,
+        mediaType,
+      });
       return result;
     });
   }
@@ -712,8 +735,34 @@ export class Maps {
           token.imageUrl = imageUrl;
         }
 
+        // Keep the linked combat participant in sync: visibility and
+        // alive/down state are mirrored between a token and its participant.
+        let combat = map.combat;
+        if (
+          (isVisibleForPlayers !== undefined || isAlive !== undefined) &&
+          combat?.participants?.some(
+            (participant) => participant.tokenId === tokenId
+          )
+        ) {
+          combat = {
+            ...combat,
+            participants: combat.participants.map((participant) =>
+              participant.tokenId === tokenId
+                ? {
+                    ...participant,
+                    ...(isVisibleForPlayers !== undefined
+                      ? { isVisibleForPlayers }
+                      : {}),
+                    ...(isAlive !== undefined ? { isDown: !isAlive } : {}),
+                  }
+                : participant
+            ),
+          };
+        }
+
         const updatedMap = await this._updateMapSettings(map, {
           tokens: map.tokens,
+          combat,
         });
 
         return {
@@ -783,8 +832,38 @@ export class Maps {
         }
       }
 
+      // Keep the linked combat participants in sync: visibility and
+      // alive/down state are mirrored between tokens and participants.
+      let combat = map.combat;
+      if (
+        (props.isVisibleForPlayers != null || props.isAlive !== undefined) &&
+        combat?.participants?.some(
+          (participant) =>
+            participant.tokenId !== null &&
+            tokenIds.has(participant.tokenId)
+        )
+      ) {
+        combat = {
+          ...combat,
+          participants: combat.participants.map((participant) =>
+            participant.tokenId !== null && tokenIds.has(participant.tokenId)
+              ? {
+                  ...participant,
+                  ...(props.isVisibleForPlayers != null
+                    ? { isVisibleForPlayers: props.isVisibleForPlayers }
+                    : {}),
+                  ...(props.isAlive !== undefined
+                    ? { isDown: !props.isAlive }
+                    : {}),
+                }
+              : participant
+          ),
+        };
+      }
+
       await this._updateMapSettings(map, {
         tokens: map.tokens,
+        combat,
       });
     });
   }
@@ -1060,7 +1139,32 @@ export class Maps {
 
       const combat: CombatState = { ...map.combat, participants };
 
-      return await this._updateMapSettings(map, { combat });
+      // Keep the linked map token in sync: visibility and alive/down state
+      // are mirrored between a participant and its token.
+      const target = map.combat.participants.find(
+        (participant) => participant.id === participantId
+      );
+      let tokens = map.tokens;
+      if (
+        target?.tokenId &&
+        (patch.isVisibleForPlayers !== undefined || patch.isDown !== undefined)
+      ) {
+        tokens = (map.tokens || []).map((token) =>
+          token.id === target.tokenId
+            ? {
+                ...token,
+                ...(patch.isVisibleForPlayers !== undefined
+                  ? { isVisibleForPlayers: patch.isVisibleForPlayers }
+                  : {}),
+                ...(patch.isDown !== undefined
+                  ? { isAlive: !patch.isDown }
+                  : {}),
+              }
+            : token
+        );
+      }
+
+      return await this._updateMapSettings(map, { combat, tokens });
     });
   }
 

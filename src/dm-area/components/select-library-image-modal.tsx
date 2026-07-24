@@ -9,6 +9,7 @@ import { buildApiUrl } from "../../public-url";
 import { sendRequest, ISendRequestTask } from "../../http-request";
 import { useGetIsMounted } from "../../hooks/use-get-is-mounted";
 import { useInvokeOnScrollEnd } from "../../hooks/use-invoke-on-scroll-end";
+import { useAccessToken } from "../../hooks/use-access-token";
 
 const Content = styled.div`
   width: 90vw;
@@ -125,6 +126,7 @@ export const SelectLibraryImageModal: React.FC<{
 }> = ({ close, onSelect }) => {
   const [state, dispatch] = React.useReducer(stateReducer, initialState);
   const getIsMounted = useGetIsMounted();
+  const accessToken = useAccessToken();
 
   const selectedFile = React.useMemo(() => {
     if (state.mode === "LOADING") return null;
@@ -134,7 +136,9 @@ export const SelectLibraryImageModal: React.FC<{
   useAsyncEffect(function* (onCancel, cast) {
     const task = sendRequest({
       method: "GET",
-      headers: {},
+      headers: {
+        Authorization: accessToken ? `Bearer ${accessToken}` : null,
+      },
       url: buildApiUrl("/images"),
     });
     onCancel(task.abort);
@@ -151,7 +155,12 @@ export const SelectLibraryImageModal: React.FC<{
   }, []);
 
   const fetchMoreTask = React.useRef<ISendRequestTask | null>(null);
-  React.useEffect(() => fetchMoreTask?.current?.abort, []);
+  React.useEffect(
+    () => () => {
+      fetchMoreTask.current?.abort();
+    },
+    []
+  );
 
   const fetchMore = React.useCallback(() => {
     if (state.mode !== "LOADED") return;
@@ -159,7 +168,9 @@ export const SelectLibraryImageModal: React.FC<{
 
     const task = sendRequest({
       method: "GET",
-      headers: {},
+      headers: {
+        Authorization: accessToken ? `Bearer ${accessToken}` : null,
+      },
       url: buildApiUrl(`/images?offset=${state.items.length}`),
     });
     fetchMoreTask.current = task;

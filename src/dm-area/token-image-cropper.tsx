@@ -18,6 +18,22 @@ import {
   GridItem,
   Heading,
 } from "@chakra-ui/react";
+import { loose } from "../chakra-loose";
+
+const ButtonLoose = loose(Button);
+const FormControlLoose = loose(FormControl);
+const SliderLoose = loose(Slider);
+const SliderFilledTrackLoose = loose(SliderFilledTrack);
+const SliderThumbLoose = loose(SliderThumb);
+const SliderTrackLoose = loose(SliderTrack);
+const StackLoose = loose(Stack);
+const TextLoose = loose(Text);
+const FormLabelLoose = loose(FormLabel);
+const InputLoose = loose(Input);
+const ImageLoose = loose(Image);
+const GridLoose = loose(Grid);
+const GridItemLoose = loose(GridItem);
+const HeadingLoose = loose(Heading);
 import graphql from "babel-plugin-relay/macro";
 import { loadImage } from "../util";
 import { tokenImageCropper_TokenLibraryImagesQuery } from "./__generated__/tokenImageCropper_TokenLibraryImagesQuery.graphql";
@@ -127,7 +143,7 @@ export const TokenImageCropper = (props: {
 
   return (
     <>
-      <Grid
+      <GridLoose
         position="absolute"
         h="100vh"
         width="100%"
@@ -137,14 +153,14 @@ export const TokenImageCropper = (props: {
         zIndex={1}
         padding={4}
       >
-        <GridItem
+        <GridItemLoose
           rowSpan={{ base: 1, xl: 4 }}
           colSpan={{ base: 5, xl: 1 }}
           display="flex"
           alignItems="center"
         >
           {data.data?.tokenImages?.edges.length ? (
-            <Stack
+            <StackLoose
               spacing={2}
               padding={3}
               borderRadius={3}
@@ -154,25 +170,25 @@ export const TokenImageCropper = (props: {
               width="100%"
               maxWidth={{ base: undefined, xl: "300px" }}
             >
-              <Heading size="xs">Token Images from this Source</Heading>
-              <Stack direction={{ base: "row", xl: "column" }}>
+              <HeadingLoose size="xs">Token Images from this Source</HeadingLoose>
+              <StackLoose direction={{ base: "row", xl: "column" }}>
                 {data.data.tokenImages.edges.map((edge) => (
-                  <Grid
+                  <GridLoose
                     templateRows="repeat(3, 1fr)"
                     templateColumns="repeat(5, 1fr)"
                     gap={2}
                     height={75}
                   >
-                    <GridItem colSpan={2} rowSpan={3}>
-                      <Image
+                    <GridItemLoose colSpan={2} rowSpan={3}>
+                      <ImageLoose
                         src={edge.node.url}
                         key={edge.node.id}
                         height={75}
                         width={75}
                       />
-                    </GridItem>
-                    <GridItem colSpan={3} rowSpan={1}>
-                      <Text
+                    </GridItemLoose>
+                    <GridItemLoose colSpan={3} rowSpan={1}>
+                      <TextLoose
                         paddingTop={3}
                         width="100%"
                         color="#e8e6e1"
@@ -183,10 +199,10 @@ export const TokenImageCropper = (props: {
                         overflow="hidden"
                       >
                         {edge.node.title}
-                      </Text>
-                    </GridItem>
-                    <GridItem colSpan={3} rowSpan={2}>
-                      <Button
+                      </TextLoose>
+                    </GridItemLoose>
+                    <GridItemLoose colSpan={3} rowSpan={2}>
+                      <ButtonLoose
                         size="sm"
                         onClick={() => {
                           props.onConfirm({
@@ -196,15 +212,15 @@ export const TokenImageCropper = (props: {
                         }}
                       >
                         Use this image.
-                      </Button>
-                    </GridItem>
-                  </Grid>
+                      </ButtonLoose>
+                    </GridItemLoose>
+                  </GridLoose>
                 ))}
-              </Stack>
-            </Stack>
+              </StackLoose>
+            </StackLoose>
           ) : null}
-        </GridItem>
-        <GridItem
+        </GridItemLoose>
+        <GridItemLoose
           colSpan={{ base: 5, xl: 4 }}
           rowSpan={{ base: 3, xl: 3 }}
           ref={ref}
@@ -239,9 +255,9 @@ export const TokenImageCropper = (props: {
               },
             }}
           />
-        </GridItem>
-        <GridItem colSpan={{ base: 5, xl: 4 }} rowSpan={{ base: 2, xl: 1 }} />
-        <Stack
+        </GridItemLoose>
+        <GridItemLoose colSpan={{ base: 5, xl: 4 }} rowSpan={{ base: 2, xl: 1 }} />
+        <StackLoose
           position="fixed"
           bottom={4}
           left="50%"
@@ -256,62 +272,64 @@ export const TokenImageCropper = (props: {
           spacing={4}
           zIndex={100}
         >
-            <Text fontSize="small">
+            <TextLoose fontSize="small">
               Please select a rectangular part from the image that will be used
               as the token image.
-            </Text>
-            <FormControl id="slider">
-              <FormLabel fontSize="small">Zoom</FormLabel>
-              <Slider
+            </TextLoose>
+            <FormControlLoose id="slider">
+              <FormLabelLoose fontSize="small">Zoom</FormLabelLoose>
+              <SliderLoose
                 aria-label="slider-zoom"
                 min={cropSize?.minZoom}
                 max={cropSize?.maxZoom}
                 step={0.01}
                 value={zoom}
-                onChange={(zoom) => setZoom(zoom)}
+                onChange={(zoom: number) => setZoom(zoom)}
                 size="sm"
               >
-                <SliderTrack>
-                  <SliderFilledTrack />
-                </SliderTrack>
-                <SliderThumb />
-              </Slider>
-            </FormControl>
-            <FormControl id="rotation">
-              <FormLabel fontSize="small">Rotation</FormLabel>
-              <Slider
+                <SliderTrackLoose>
+                  <SliderFilledTrackLoose />
+                </SliderTrackLoose>
+                <SliderThumbLoose />
+              </SliderLoose>
+            </FormControlLoose>
+            <FormControlLoose id="rotation">
+              <FormLabelLoose fontSize="small">Rotation</FormLabelLoose>
+              <SliderLoose
                 aria-label="slider-rotation"
                 min={0}
                 max={360}
                 step={0.01}
                 value={rotation}
-                onChange={(rotation) => setRotation(rotation)}
+                onChange={(rotation: number) => setRotation(rotation)}
                 size="sm"
               >
-                <SliderTrack>
-                  <SliderFilledTrack />
-                </SliderTrack>
-                <SliderThumb />
-              </Slider>
-            </FormControl>
-            <FormControl id="token-title">
-              <FormLabel fontSize="small">Title</FormLabel>
-              <Input
+                <SliderTrackLoose>
+                  <SliderFilledTrackLoose />
+                </SliderTrackLoose>
+                <SliderThumbLoose />
+              </SliderLoose>
+            </FormControlLoose>
+            <FormControlLoose id="token-title">
+              <FormLabelLoose fontSize="small">Title</FormLabelLoose>
+              <InputLoose
                 value={title}
-                onChange={(ev) => setTitle(ev.target.value)}
+                onChange={(ev: React.ChangeEvent<HTMLInputElement>) =>
+                  setTitle(ev.target.value)
+                }
                 size="sm"
               />
-            </FormControl>
-            <Stack
+            </FormControlLoose>
+            <StackLoose
               spacing={4}
               direction="row"
               align="center"
               alignSelf="flex-end"
             >
-              <Button onClick={props.onClose} variant="ghost">
+              <ButtonLoose onClick={props.onClose} variant="ghost">
                 Annuler
-              </Button>
-              <Button
+              </ButtonLoose>
+              <ButtonLoose
                 colorScheme="teal"
                 isDisabled={croppedAreaPixels === null}
                 onClick={async () => {
@@ -327,10 +345,10 @@ export const TokenImageCropper = (props: {
                 }}
               >
                 Confirmer
-              </Button>
-            </Stack>
-        </Stack>
-      </Grid>
+              </ButtonLoose>
+            </StackLoose>
+        </StackLoose>
+      </GridLoose>
     </>
   );
 };
