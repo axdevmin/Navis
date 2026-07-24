@@ -240,22 +240,22 @@ export const TokenImageCropper = (props: {
             }}
           />
         </GridItem>
-        <GridItem
-          colSpan={{ base: 5, xl: 4 }}
-          rowSpan={{ base: 2, xl: 1 }}
-          display="flex"
-          justifyContent="center"
+        <GridItem colSpan={{ base: 5, xl: 4 }} rowSpan={{ base: 2, xl: 1 }} />
+        <Stack
+          position="fixed"
+          bottom={4}
+          left="50%"
+          transform="auto"
+          translateX="-50%"
+          background="#1a1b2e"
+          padding={5}
+          borderRadius={3}
+          maxWidth={600}
+          maxHeight="80vh"
+          overflowY="auto"
+          spacing={4}
+          zIndex={100}
         >
-          <Stack
-            background="#1a1b2e"
-            padding={5}
-            borderRadius={3}
-            maxWidth={600}
-            spacing={4}
-            zIndex={100}
-            height="fit-content"
-            alignSelf="flex-end"
-          >
             <Text fontSize="small">
               Please select a rectangular part from the image that will be used
               as the token image.
@@ -329,8 +329,7 @@ export const TokenImageCropper = (props: {
                 Confirmer
               </Button>
             </Stack>
-          </Stack>
-        </GridItem>
+        </Stack>
       </Grid>
     </>
   );

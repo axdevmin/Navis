@@ -1,11 +1,14 @@
 # Navis — Roadmap
 
-> Dernière mise à jour : 2026-05-06
+> Dernière mise à jour : 2026-07-24
 
 ---
 
 ## ✅ Fait
 
+- **Combat au tour par tour** — le MJ prépare le combat (liste pré-remplie depuis les tokens de la carte + drag & drop depuis la bibliothèque + ajout manuel), tirage d'initiative 1-20 avec retirage des ex-aequo, tracker rétractable transparent partagé MJ/joueurs (surbrillance du tour en cours, compteur de round, navigation tour suivant/précédent au clavier ← →, scroll si beaucoup de participants, drag & drop ou ajout au clic pour réordonner/ajouter en cours de combat), sync DM→joueurs via GraphQL live. Chat masqué par défaut (togglable).
+- **Bibliothèque de personnages** — personnages persistés en base (nom, camp, couleur, portrait via le système de token image existant), créés/supprimés depuis la modale "Bibliothèque" (ex-Médias, désormais à onglets Personnages/Images), réutilisables par drag & drop sur la carte ou dans le combat (actif ou en préparation), ou en un clic "Ajouter sur la carte" / "Depuis la bibliothèque". Un token déjà placé peut aussi être enregistré comme personnage ("💾 Enregistrer comme personnage" dans ses propriétés). Bouton "Bibliothèque" (ex-Médias) et "Cartes" (ex-Bibliothèque) renommés en conséquence. Renommage inline des participants de combat au clic.
+- **Fix : clic droit sur un token → "Afficher les propriétés"** — le clic droit ouvrait le menu contextuel sans sélectionner le token, rendant l'action invisible ; corrigé (sélection automatique au clic droit, comme au clic gauche).
 - **Météo** — pluie, orage, neige, soleil. Intensité + angle vent. Sync DM→joueurs via GraphQL live.
 - **Brouillard de guerre organique** — shader GLSL avec FBM + domain warping. Vue DM et joueurs séparées.
 - **UI transparente unifiée** — glassmorphism (backdrop-filter blur) sur tous les toolbars DM et joueur, boutons chat. Prop `transparent` dans `Toolbar`. Badge version masqué côté joueur.

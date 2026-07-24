@@ -23,6 +23,10 @@ import { Socket } from "socket.io-client";
 import { MapTokenEntity } from "../map-typings";
 import { isFileDrag } from "../hooks/use-drop-zone";
 import { LIBRARY_DRAG_TYPE, TokenPreset } from "./token-library";
+import {
+  LIBRARY_CHARACTER_DRAG_TYPE,
+  LibraryCharacterDragPayload,
+} from "./library/library-character-drag-type";
 import { useRandomBackground } from "../hooks/use-random-background";
 import { useNoteWindowActions } from "./token-info-aside";
 import { MapControlInterface } from "../map-view";
@@ -351,6 +355,7 @@ const Content = ({
         ) : null}
         {mode.title === "MEDIA_LIBRARY" ? (
           <MediaLibrary
+            mapId={dmAreaResponse.data?.map?.id ?? null}
             onClose={() => {
               setMode({ title: "EDIT_MAP" });
             }}
@@ -379,7 +384,10 @@ const Content = ({
               const isLibraryDrag = ev.dataTransfer.types.includes(
                 LIBRARY_DRAG_TYPE
               );
-              if (!isFileDrag(ev) && !isLibraryDrag) {
+              const isLibraryCharacterDrag = ev.dataTransfer.types.includes(
+                LIBRARY_CHARACTER_DRAG_TYPE
+              );
+              if (!isFileDrag(ev) && !isLibraryDrag && !isLibraryCharacterDrag) {
                 return;
               }
               ev.preventDefault();
@@ -389,6 +397,43 @@ const Content = ({
 
               const context = controlRef.current?.getContext();
               if (!context) return;
+
+              const characterJson = ev.dataTransfer.getData(
+                LIBRARY_CHARACTER_DRAG_TYPE
+              );
+              if (characterJson) {
+                const character = JSON.parse(
+                  characterJson
+                ) as LibraryCharacterDragPayload;
+                const coords = context.helper.coordinates.screenToImage([
+                  ev.clientX,
+                  ev.clientY,
+                ]);
+                commitMutation<dmAreaTokenAddManyMutation>(relayEnvironment, {
+                  mutation: DmAreaTokenAddManyMutation,
+                  variables: {
+                    input: {
+                      mapId: dmAreaResponse.data!.map!.id,
+                      tokens: [
+                        {
+                          color: character.color,
+                          x: coords[0],
+                          y: coords[1],
+                          rotation: 0,
+                          label: character.label,
+                          isVisibleForPlayers: false,
+                          isMovableByPlayers: false,
+                          isLocked: false,
+                          tokenType: "character",
+                          isAlive: true,
+                          imageUrl: character.imageUrl,
+                        },
+                      ],
+                    },
+                  },
+                });
+                return;
+              }
 
               const presetJson = ev.dataTransfer.getData(LIBRARY_DRAG_TYPE);
               if (presetJson) {

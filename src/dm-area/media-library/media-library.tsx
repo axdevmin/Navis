@@ -14,9 +14,12 @@ import { useSplashShareImageAction } from "../../hooks/use-splash-share-image-ac
 import { InputGroup } from "../../input";
 import { useSelectFileDialog } from "../../hooks/use-select-file-dialog";
 import { useAccessToken } from "../../hooks/use-access-token";
+import * as HorizontalNavigation from "../../horizontal-navigation";
+import { CharacterLibraryTab } from "../library/character-library-tab";
 
 type MediaLibraryProps = {
   onClose: () => void;
+  mapId: string | null;
 };
 
 type MediaLibraryItem = {
@@ -128,7 +131,13 @@ const initialState: MediaLibraryState = {
   selectedFileId: null,
 };
 
-export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onClose }) => {
+export const MediaLibrary: React.FC<MediaLibraryProps> = ({
+  onClose,
+  mapId,
+}) => {
+  const [activeTab, setActiveTab] = React.useState<"characters" | "images">(
+    "characters"
+  );
   const [state, dispatch] = React.useReducer(stateReducer, initialState);
   const getIsMounted = useGetIsMounted();
   const accessToken = useAccessToken();
@@ -283,8 +292,26 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onClose }) => {
       >
         <Modal.Header>
           <Modal.Heading2>
-            <Icon.Image boxSize="28px" /> Media Library
+            <Icon.BookOpen boxSize="28px" /> Bibliothèque
           </Modal.Heading2>
+          <div style={{ marginLeft: 20 }}>
+            <HorizontalNavigation.Group>
+              <HorizontalNavigation.Button
+                isActive={activeTab === "characters"}
+                onClick={() => setActiveTab("characters")}
+              >
+                <Icon.Users boxSize="14px" />
+                <span>Personnages</span>
+              </HorizontalNavigation.Button>
+              <HorizontalNavigation.Button
+                isActive={activeTab === "images"}
+                onClick={() => setActiveTab("images")}
+              >
+                <Icon.Image boxSize="14px" />
+                <span>Images</span>
+              </HorizontalNavigation.Button>
+            </HorizontalNavigation.Group>
+          </div>
           <div style={{ flex: 1, textAlign: "right" }}>
             <Button.Tertiary
               tabIndex={1}
@@ -295,35 +322,43 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onClose }) => {
             </Button.Tertiary>
           </div>
         </Modal.Header>
-        <Modal.Body
-          style={{ flex: 1, overflowY: "scroll" }}
-          onScroll={onScroll}
-        >
-          <Grid>
-            {state.mode === "LOADING"
-              ? null
-              : state.items.map((item) => (
-                  <Item
-                    item={item}
-                    key={item.id}
-                    deleteItem={() => deleteImageAction(item.id)}
-                    updateItem={(opts) => updateImageAction(item.id, opts)}
-                  />
-                ))}
-          </Grid>
-        </Modal.Body>
-        <Modal.Footer>
-          <Modal.Actions>
-            <Modal.ActionGroup>
-              <div>
-                <Button.Primary onClick={showSelectFileDialog} role="button">
-                  <Icon.Plus boxSize="24px" />
-                  <span>Upload new File</span>
-                </Button.Primary>
-              </div>
-            </Modal.ActionGroup>
-          </Modal.Actions>
-        </Modal.Footer>
+        {activeTab === "characters" ? (
+          <Modal.Body style={{ flex: 1, overflowY: "hidden" }}>
+            <CharacterLibraryTab mapId={mapId} />
+          </Modal.Body>
+        ) : (
+          <>
+            <Modal.Body
+              style={{ flex: 1, overflowY: "scroll" }}
+              onScroll={onScroll}
+            >
+              <Grid>
+                {state.mode === "LOADING"
+                  ? null
+                  : state.items.map((item) => (
+                      <Item
+                        item={item}
+                        key={item.id}
+                        deleteItem={() => deleteImageAction(item.id)}
+                        updateItem={(opts) => updateImageAction(item.id, opts)}
+                      />
+                    ))}
+              </Grid>
+            </Modal.Body>
+            <Modal.Footer>
+              <Modal.Actions>
+                <Modal.ActionGroup>
+                  <div>
+                    <Button.Primary onClick={showSelectFileDialog} role="button">
+                      <Icon.Plus boxSize="24px" />
+                      <span>Upload new File</span>
+                    </Button.Primary>
+                  </div>
+                </Modal.ActionGroup>
+              </Modal.Actions>
+            </Modal.Footer>
+          </>
+        )}
         {reactTreeNode}
       </Content>
     </Modal>

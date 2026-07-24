@@ -169,6 +169,11 @@ type Query {
   Get a map by id.
   """
   map(id: ID!): Map
+
+  """
+  All reusable character presets in the library.
+  """
+  libraryCharacters: [LibraryCharacter!]!
   node(id: ID!): Node
 }
 
@@ -329,6 +334,11 @@ type Map {
   The current weather effect on the map.
   """
   weatherSettings: WeatherSettings!
+
+  """
+  The combat tracker state of the map.
+  """
+  combat: CombatState!
 }
 
 type MapGrid {
@@ -416,6 +426,51 @@ enum WeatherType {
   cloudy
 }
 
+"""
+The combat tracker state of a map.
+"""
+type CombatState {
+  isActive: Boolean!
+  round: Int!
+  currentParticipantId: ID
+  participants: [CombatParticipant!]!
+}
+
+"""
+A participant taking part in the current combat.
+"""
+type CombatParticipant {
+  id: ID!
+  name: String!
+  faction: CombatFaction!
+  initiative: Int!
+  color: String!
+  imageUrl: String
+  tokenId: ID
+  isVisibleForPlayers: Boolean!
+  isDown: Boolean!
+}
+
+"""
+Which side a combat participant belongs to.
+"""
+enum CombatFaction {
+  hero
+  enemy
+  neutral
+}
+
+"""
+A reusable character preset (name, faction, color, portrait) that can be dragged onto the map or into a combat.
+"""
+type LibraryCharacter {
+  id: ID!
+  name: String!
+  faction: String!
+  color: String!
+  tokenImage: TokenImage
+}
+
 type Mutation {
   logIn(input: LogInInput): LogInResult!
   changeName(input: ChangeNameInput!): ChangeNameResult!
@@ -489,10 +544,63 @@ type Mutation {
   Ping a point on the map.
   """
   mapPing(input: MapPingInput!): Boolean
+
+  """
+  Start a new combat on a map with the given participants.
+  """
+  combatStart(input: CombatStartInput!): CombatResult!
+
+  """
+  Add a participant to the ongoing combat.
+  """
+  combatAddParticipant(input: CombatAddParticipantInput!): CombatResult!
+
+  """
+  Remove a participant from the ongoing combat.
+  """
+  combatRemoveParticipant(input: CombatRemoveParticipantInput!): CombatResult!
+
+  """
+  Reorder the combat participants (manual drag & drop).
+  """
+  combatReorderParticipants(
+    input: CombatReorderParticipantsInput!
+  ): CombatResult!
+
+  """
+  Advance the combat to the next participant's turn.
+  """
+  combatNextTurn(input: CombatNextTurnInput!): CombatResult!
+
+  """
+  Go back to the previous participant's turn.
+  """
+  combatPreviousTurn(input: CombatPreviousTurnInput!): CombatResult!
+
+  """
+  Update properties of a combat participant.
+  """
+  combatUpdateParticipant(input: CombatUpdateParticipantInput!): CombatResult!
+
+  """
+  End the ongoing combat and clear the tracker.
+  """
+  combatEnd(input: CombatEndInput!): CombatResult!
+
   """
   Roll a die and broadcast the result to all map viewers.
   """
   rollDice(input: RollDiceInput!): Boolean
+
+  """
+  Add a new character preset to the library.
+  """
+  libraryCharacterCreate(input: LibraryCharacterCreateInput!): LibraryCharacter!
+
+  """
+  Remove a character preset from the library.
+  """
+  libraryCharacterDelete(input: LibraryCharacterDeleteInput!): Boolean!
 }
 
 type LogInResult {
@@ -857,9 +965,74 @@ input MapPingInput {
   y: Float!
 }
 
+type CombatResult {
+  updatedMap: Map!
+}
+
+input CombatStartInput {
+  mapId: ID!
+  participants: [CombatParticipantInput!]!
+}
+
+input CombatParticipantInput {
+  name: String!
+  faction: CombatFaction!
+  color: String!
+  imageUrl: String
+  tokenId: ID
+  isVisibleForPlayers: Boolean!
+}
+
+input CombatAddParticipantInput {
+  mapId: ID!
+  participant: CombatParticipantInput!
+}
+
+input CombatRemoveParticipantInput {
+  mapId: ID!
+  participantId: ID!
+}
+
+input CombatReorderParticipantsInput {
+  mapId: ID!
+  participantIds: [ID!]!
+}
+
+input CombatNextTurnInput {
+  mapId: ID!
+}
+
+input CombatPreviousTurnInput {
+  mapId: ID!
+}
+
+input CombatUpdateParticipantInput {
+  mapId: ID!
+  participantId: ID!
+  name: String
+  faction: CombatFaction
+  isVisibleForPlayers: Boolean
+  isDown: Boolean
+}
+
+input CombatEndInput {
+  mapId: ID!
+}
+
 input RollDiceInput {
   mapId: ID!
   diceType: String!
+}
+
+input LibraryCharacterCreateInput {
+  name: String!
+  faction: String!
+  color: String!
+  tokenImageId: ID
+}
+
+input LibraryCharacterDeleteInput {
+  id: ID!
 }
 
 type Subscription {

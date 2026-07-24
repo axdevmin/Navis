@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import * as path from "path";
 import * as fs from "fs-extra";
 import type {
+  CombatFaction,
   MapEntity,
   MapGridEntity,
   Maps,
@@ -13,6 +14,7 @@ import type {
 import * as auth from "./auth";
 import type { Settings } from "./settings";
 import { invalidateResourcesRT } from "./live-query-store";
+import { assignInitiative } from "./combat-lib";
 import {
   MediaType,
   validateMediaTypeExtension,
@@ -422,6 +424,176 @@ export const mapUpdateWeather = (params: {
       )
     ),
     RT.map((updatedMap): MapUpdateWeatherResult => ({ updatedMap }))
+  );
+
+export type CombatResult = {
+  updatedMap: MapEntity;
+};
+
+type CombatParticipantInput = {
+  name: string;
+  faction: CombatFaction;
+  color: string;
+  imageUrl: string | null;
+  tokenId: string | null;
+  isVisibleForPlayers: boolean;
+};
+
+export const combatStart = (params: {
+  mapId: string;
+  participants: Array<CombatParticipantInput>;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain((deps) => () => () => {
+      const withInitiative = assignInitiative(params.participants);
+      return deps.maps.combatStart(params.mapId, withInitiative);
+    }),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatAddParticipant = (params: {
+  mapId: string;
+  participant: CombatParticipantInput;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain((deps) => () => () => {
+      const [withInitiative] = assignInitiative([params.participant]);
+      return deps.maps.combatAddParticipant(params.mapId, withInitiative);
+    }),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatRemoveParticipant = (params: {
+  mapId: string;
+  participantId: string;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain(
+      (deps) => () => () =>
+        deps.maps.combatRemoveParticipant(params.mapId, params.participantId)
+    ),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatReorderParticipants = (params: {
+  mapId: string;
+  orderedParticipantIds: Array<string>;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain(
+      (deps) => () => () =>
+        deps.maps.combatReorderParticipants(
+          params.mapId,
+          params.orderedParticipantIds
+        )
+    ),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatNextTurn = (params: { mapId: string }) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain((deps) => () => () => deps.maps.combatNextTurn(params.mapId)),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatPreviousTurn = (params: { mapId: string }) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain(
+      (deps) => () => () => deps.maps.combatPreviousTurn(params.mapId)
+    ),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatUpdateParticipant = (params: {
+  mapId: string;
+  participantId: string;
+  patch: {
+    name?: string;
+    faction?: CombatFaction;
+    isVisibleForPlayers?: boolean;
+    isDown?: boolean;
+  };
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain(
+      (deps) => () => () =>
+        deps.maps.combatUpdateParticipant(
+          params.mapId,
+          params.participantId,
+          params.patch
+        )
+    ),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatEnd = (params: { mapId: string }) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain((deps) => () => () => deps.maps.combatEnd(params.mapId)),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
   );
 
 export type MapPing = {
