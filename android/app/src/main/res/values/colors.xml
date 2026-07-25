@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mirrors the palette of the web app (src/design-system.ts). -->
+<resources>
+    <color name="navis_background">#0d0f14</color>
+    <color name="navis_surface">#161a23</color>
+    <color name="navis_accent">#60a5fa</color>
+    <color name="navis_text_primary">#e8e6e1</color>
+    <color name="navis_text_secondary">#9ca3af</color>
+    <color name="navis_text_muted">#6b7280</color>
+</resources>

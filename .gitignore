@@ -52,3 +52,15 @@ node_modules
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Android TV app #
+##################
+android/.gradle
+android/local.properties
+android/keystore.properties
+*.jks
+*.keystore
+# The Gradle wrapper jar must be versioned despite the *.jar rule above,
+# otherwise ./gradlew cannot bootstrap on a fresh clone or in CI.
+!android/gradle/wrapper/gradle-wrapper.jar
+bin/*.apk

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A Navis server on a local network is served over plain HTTP, which Android 9+
+  blocks by default. Cleartext is allowed here because the traffic never leaves
+  the local network; HTTPS is still used whenever the server provides it.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
