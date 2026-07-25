@@ -4,6 +4,10 @@ import graphql from "babel-plugin-relay/macro";
 import { messageAddMutation } from "./__generated__/messageAddMutation.graphql";
 import { useToast, Code } from "@chakra-ui/react";
 
+// Chakra's style props make TypeScript build a union too complex to represent
+// (TS2590) at this call site; the loose alias avoids it.
+const CodeBlock = Code as React.ComponentType<{ [key: string]: unknown }>;
+
 const MessageAddMutationDocument = graphql`
   mutation messageAddMutation($input: ChatMessageCreateInput!) {
     chatMessageCreate(input: $input) {
@@ -26,7 +30,7 @@ export const useMessageAddMutation = () => {
             showToast({
               title: `Error while evaluating template`,
               description: (
-                <Code
+                <CodeBlock
                   overflowX="scroll"
                   display="block"
                   whiteSpace="pre"

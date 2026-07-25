@@ -23,6 +23,20 @@ import {
   Td,
   Code,
 } from "@chakra-ui/react";
+import { loose } from "../chakra-loose";
+
+const HStackLoose = loose(HStack);
+const IconButtonLoose = loose(IconButton);
+const TableLoose = loose(Table);
+const TheadLoose = loose(Thead);
+const TrLoose = loose(Tr);
+const ThLoose = loose(Th);
+const TbodyLoose = loose(Tbody);
+const TdLoose = loose(Td);
+const CodeLoose = loose(Code);
+const PopoverContentLoose = loose(PopoverContent);
+const PopoverBodyLoose = loose(PopoverBody);
+const PopoverHeaderLoose = loose(PopoverHeader);
 import { useNoteWindowActions } from "../dm-area/token-info-aside";
 import { SharableImage } from "../dm-area/components/sharable-image";
 import * as Icon from "../feather-icons";
@@ -148,12 +162,12 @@ const UserMessageRenderer = ({
   return (
     <DiceRollResultContext.Provider value={{ diceRolls, referencedDiceRolls }}>
       <Container>
-        <HStack justifyContent="space-between">
+        <HStackLoose justifyContent="space-between">
           <AuthorName>{authorName}: </AuthorName>
           {diceRolls.length || referencedDiceRolls.length ? (
             <Popover placement="left">
               <PopoverTrigger>
-                <IconButton
+                <IconButtonLoose
                   aria-label="Show Info"
                   icon={<Icon.Info />}
                   size="sm"
@@ -161,36 +175,36 @@ const UserMessageRenderer = ({
                 />
               </PopoverTrigger>
               <Portal>
-                <PopoverContent>
-                  <PopoverHeader>Dice Rolls</PopoverHeader>
+                <PopoverContentLoose>
+                  <PopoverHeaderLoose>Dice Rolls</PopoverHeaderLoose>
                   <PopoverCloseButton />
-                  <PopoverBody>
-                    <Table size="sm">
-                      <Thead>
-                        <Tr>
-                          <Th>ID</Th>
-                          <Th>Result</Th>
-                        </Tr>
-                      </Thead>
-                      <Tbody>
+                  <PopoverBodyLoose>
+                    <TableLoose size="sm">
+                      <TheadLoose>
+                        <TrLoose>
+                          <ThLoose>ID</ThLoose>
+                          <ThLoose>Result</ThLoose>
+                        </TrLoose>
+                      </TheadLoose>
+                      <TbodyLoose>
                         {[...diceRolls, ...referencedDiceRolls].map((roll) => (
-                          <Tr key={roll.rollId}>
-                            <Td>
-                              <Code>{roll.rollId}</Code>
-                            </Td>
-                            <Td>
+                          <TrLoose key={roll.rollId}>
+                            <TdLoose>
+                              <CodeLoose>{roll.rollId}</CodeLoose>
+                            </TdLoose>
+                            <TdLoose>
                               <DiceRoll diceRoll={roll} />
-                            </Td>
-                          </Tr>
+                            </TdLoose>
+                          </TrLoose>
                         ))}
-                      </Tbody>
-                    </Table>
-                  </PopoverBody>
-                </PopoverContent>
+                      </TbodyLoose>
+                    </TableLoose>
+                  </PopoverBodyLoose>
+                </PopoverContentLoose>
               </Portal>
             </Popover>
           ) : null}
-        </HStack>
+        </HStackLoose>
         <MarkdownView
           markdown={markdown}
           components={{ ...chatMessageComponents, FormattedDiceRoll }}

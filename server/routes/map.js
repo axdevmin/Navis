@@ -8,6 +8,7 @@ const {
   getTmpFile,
   parseFileExtension,
 } = require("../util");
+const { getMediaTypeFromExtension } = require("../media-types");
 
 const mapToken = (token) => {
   if (!token.reference) return token;
@@ -53,6 +54,11 @@ module.exports = ({ roleMiddleware, maps, settings, emitter }) => {
           code: "ERR_MAP_NO_IMAGE",
         },
       });
+    }
+
+    if (map.mediaType === "video-url") {
+      // The "map image" of a video-url map is an external URL, not a file.
+      return res.redirect(map.mapPath);
     }
 
     const basePath = maps.getBasePath(map);
@@ -114,7 +120,7 @@ module.exports = ({ roleMiddleware, maps, settings, emitter }) => {
 
     req.busboy.once("file", (fieldname, file, info) => {
       const filename = info.filename;
-      fileExtension = parseFileExtension(filename);
+      fileExtension = (parseFileExtension(filename) || "").toLowerCase();
       writeStream = fs.createWriteStream(tmpFile);
       file.pipe(writeStream);
     });
@@ -125,12 +131,33 @@ module.exports = ({ roleMiddleware, maps, settings, emitter }) => {
     });
 
     req.busboy.once("close", () => {
-      maps
-        .updateMapImage(req.params.id, { filePath: tmpFile, fileExtension })
-        .then((map) => {
-          res.status(200).json({ error: null, data: mapMap(map) });
-        })
-        .catch(handleUnexpectedError(res));
+      if (writeStream === null) return;
+
+      if (getMediaTypeFromExtension(fileExtension) === null) {
+        fs.unlink(tmpFile, () => undefined);
+        res.status(422).json({
+          data: null,
+          error: `Unsupported file extension '${fileExtension}'.`,
+        });
+        return;
+      }
+
+      const proceed = () => {
+        maps
+          .updateMapImage(req.params.id, { filePath: tmpFile, fileExtension })
+          .then((map) => {
+            emitter.emit("invalidate", `Map:${map.id}`);
+            res.status(200).json({ error: null, data: mapMap(map) });
+          })
+          .catch(handleUnexpectedError(res));
+      };
+
+      // busboy "close" can fire before the write stream has flushed to disk
+      if (writeStream.writableFinished) {
+        proceed();
+      } else {
+        writeStream.once("finish", proceed);
+      }
     });
   });
 
@@ -287,7 +314,6 @@ module.exports = ({ roleMiddleware, maps, settings, emitter }) => {
 
   router.patch("/map/:id/token/:tokenId", roleMiddleware.pc, (req, res) => {
     const map = maps.get(req.params.id);
-    const token = map.tokens?.find((token) => token.id === req.params.tokenId);
 
     if (!map) {
       return res.status(404).json({
@@ -298,6 +324,8 @@ module.exports = ({ roleMiddleware, maps, settings, emitter }) => {
         },
       });
     }
+
+    const token = map.tokens?.find((token) => token.id === req.params.tokenId);
 
     if (!token || (req.role === "PC" && token.isVisibleForPlayers === false)) {
       return res.status(404).json({

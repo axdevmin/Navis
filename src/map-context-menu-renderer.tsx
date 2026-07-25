@@ -2,6 +2,13 @@ import * as React from "react";
 import graphql from "babel-plugin-relay/macro";
 import { useFragment, useMutation } from "relay-hooks";
 import { Box, Menu, MenuItem, MenuDivider, MenuList } from "@chakra-ui/react";
+import { loose } from "./chakra-loose";
+
+const BoxLoose = loose(Box);
+const MenuLoose = loose(Menu);
+const MenuItemLoose = loose(MenuItem);
+const MenuDividerLoose = loose(MenuDivider);
+const MenuListLoose = loose(MenuList);
 import { MapTokenEntity } from "./map-typings";
 import { useContextMenu } from "./map-context-menu";
 import {
@@ -9,7 +16,9 @@ import {
   usePropertiesPanel,
   useHiddenLabels,
 } from "./shared-token-state";
+import { defaultFactionForTokenType } from "./dm-area/combat/combat-faction";
 import { mapContextMenuRendererMapTokenRemoveManyMutation } from "./__generated__/mapContextMenuRendererMapTokenRemoveManyMutation.graphql";
+import { mapContextMenuRendererCombatAddParticipantMutation } from "./__generated__/mapContextMenuRendererCombatAddParticipantMutation.graphql";
 import { mapContextMenuRendererMapTokenAddManyMutation } from "./__generated__/mapContextMenuRendererMapTokenAddManyMutation.graphql";
 import { mapContextMenuRendererUpdateManyMutation } from "./__generated__/mapContextMenuRendererUpdateManyMutation.graphql";
 import { mapContextMenuRenderer_MapFragment$key } from "./__generated__/mapContextMenuRenderer_MapFragment.graphql";
@@ -38,6 +47,34 @@ const MapContextMenuRendererMapTokenAddManyMutation = graphql`
   }
 `;
 
+const MapContextMenuRendererCombatAddParticipantMutation = graphql`
+  mutation mapContextMenuRendererCombatAddParticipantMutation(
+    $input: CombatAddParticipantInput!
+  ) {
+    combatAddParticipant(input: $input) {
+      updatedMap {
+        id
+        combat {
+          isActive
+          round
+          currentParticipantId
+          participants {
+            id
+            name
+            faction
+            initiative
+            color
+            imageUrl
+            isVisibleForPlayers
+            isDown
+            tokenId
+          }
+        }
+      }
+    }
+  }
+`;
+
 const MapFragment = graphql`
   fragment mapContextMenuRenderer_MapFragment on Map {
     id
@@ -59,6 +96,13 @@ const MapFragment = graphql`
         id
       }
       referenceId
+    }
+    combat {
+      isActive
+      participants {
+        id
+        tokenId
+      }
     }
   }
 `;
@@ -110,6 +154,10 @@ export const ContextMenuRenderer = (props: {
     useMutation<mapContextMenuRendererUpdateManyMutation>(
       MapContextMenuRendererUpdateManyMutation
     );
+  const [combatAddParticipant] =
+    useMutation<mapContextMenuRendererCombatAddParticipantMutation>(
+      MapContextMenuRendererCombatAddParticipantMutation
+    );
 
   if (state === null) return null;
 
@@ -122,14 +170,14 @@ export const ContextMenuRenderer = (props: {
     onClick: () => void,
     children: React.ReactNode
   ) => (
-    <MenuItem
+    <MenuItemLoose
       bg="transparent"
       color={color}
       _hover={{ bg: hoverBg, color: "#ffffff" }}
       onClick={onClick}
     >
       {children}
-    </MenuItem>
+    </MenuItemLoose>
   );
 
   const duplicateToken = (tokenId: string, offsetX = 15, offsetY = 15) => {
@@ -154,6 +202,34 @@ export const ContextMenuRenderer = (props: {
               imageUrl: token.imageUrl ?? undefined,
             },
           ],
+        },
+      },
+    });
+  };
+
+  const combatTokenIds = new Set(
+    (map.combat?.participants ?? [])
+      .map((participant) => participant.tokenId)
+      .filter((tokenId): tokenId is string => tokenId != null)
+  );
+
+  const addTokenToCombat = (tokenId: string) => {
+    const token = map.tokens.find((t) => t.id === tokenId);
+    if (!token || combatTokenIds.has(token.id)) return;
+    combatAddParticipant({
+      variables: {
+        input: {
+          mapId: map.id,
+          participant: {
+            name: token.label || "Sans nom",
+            faction: defaultFactionForTokenType(
+              (token.tokenType as any) ?? "marker"
+            ),
+            color: token.color,
+            imageUrl: token.imageUrl ?? null,
+            tokenId: token.id,
+            isVisibleForPlayers: token.isVisibleForPlayers,
+          },
         },
       },
     });
@@ -184,14 +260,14 @@ export const ContextMenuRenderer = (props: {
   };
 
   return (
-    <Box
+    <BoxLoose
       position="absolute"
       left={state.clientPosition.x}
       top={state.clientPosition.y}
-      onContextMenu={(ev) => ev.preventDefault()}
+      onContextMenu={(ev: React.MouseEvent) => ev.preventDefault()}
     >
-      <Menu defaultIsOpen={true} onClose={() => showContextMenu(null)}>
-        <MenuList
+      <MenuLoose defaultIsOpen={true} onClose={() => showContextMenu(null)}>
+        <MenuListLoose
           bg="#1a1a2e"
           borderColor="#333366"
           boxShadow="0 4px 20px rgba(0,0,0,0.6)"
@@ -223,7 +299,13 @@ export const ContextMenuRenderer = (props: {
                 {mi("#ddddff", "#2a2a4e", togglePropertiesPanel,
                   panelIsVisible ? "Masquer les propriétés" : "Afficher les propriétés"
                 )}
-                <MenuDivider borderColor="#333366" my="2px" />
+                {map.combat?.isActive &&
+                  token &&
+                  !combatTokenIds.has(token.id) &&
+                  mi("#86efac", "#1a2e1a", () => addTokenToCombat(token.id),
+                    "⚔ Ajouter au combat"
+                  )}
+                <MenuDividerLoose borderColor="#333366" my="2px" />
                 {mi("#ddddff", "#2a2a4e",
                   () => duplicateToken(state.target!.id),
                   "Dupliquer"
@@ -232,7 +314,7 @@ export const ContextMenuRenderer = (props: {
                   `Dupliquer la sélection (${selectedItems.size})`
                 )}
                 {hasMultiSelection && (
-                  <MenuItem
+                  <MenuItemLoose
                     bg="transparent"
                     color="#ff6b6b"
                     _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
@@ -246,9 +328,9 @@ export const ContextMenuRenderer = (props: {
                     }}
                   >
                     Supprimer la sélection ({selectedItems.size})
-                  </MenuItem>
+                  </MenuItemLoose>
                 )}
-                <MenuItem
+                <MenuItemLoose
                   bg="transparent"
                   color="#ff6b6b"
                   _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
@@ -261,7 +343,7 @@ export const ContextMenuRenderer = (props: {
                   }}
                 >
                   Supprimer
-                </MenuItem>
+                </MenuItemLoose>
               </>
             );
           })() : selectedItems.size > 0 ? (
@@ -269,11 +351,11 @@ export const ContextMenuRenderer = (props: {
               {mi("#ddddff", "#2a2a4e", togglePropertiesPanel,
                 panelIsVisible ? "Masquer les propriétés" : "Afficher les propriétés"
               )}
-              <MenuDivider borderColor="#333366" my="2px" />
+              <MenuDividerLoose borderColor="#333366" my="2px" />
               {mi("#ddddff", "#2a2a4e", duplicateSelection,
                 `Dupliquer la sélection (${selectedItems.size})`
               )}
-              <MenuItem
+              <MenuItemLoose
                 bg="transparent"
                 color="#ff6b6b"
                 _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
@@ -287,11 +369,11 @@ export const ContextMenuRenderer = (props: {
                 }}
               >
                 Supprimer la sélection ({selectedItems.size})
-              </MenuItem>
+              </MenuItemLoose>
             </>
           ) : null}
-        </MenuList>
-      </Menu>
-    </Box>
+        </MenuListLoose>
+      </MenuLoose>
+    </BoxLoose>
   );
 };

@@ -6,6 +6,11 @@ import {
 } from "leva/plugin";
 import { HtmlContainer } from "../dm-area/components/html-container";
 import { Box, Button, Flex } from "@chakra-ui/react";
+import { loose } from "../chakra-loose";
+
+const BoxLoose = loose(Box);
+const ButtonLoose = loose(Button);
+const FlexLoose = loose(Flex);
 import { useNoteWindowActions } from "../dm-area/token-info-aside";
 
 const { Row } = LevaComponents;
@@ -21,17 +26,17 @@ const TokenNote = () => {
 
   return (
     <Row>
-      <Box maxHeight={300} overflowY="scroll">
+      <BoxLoose maxHeight={300} overflowY="scroll">
         <HtmlContainer markdown={displayValue.markdown} />
-      </Box>
-      <Flex justifyContent="flex-end">
-        <Button
+      </BoxLoose>
+      <FlexLoose justifyContent="flex-end">
+        <ButtonLoose
           size="xs"
           onClick={() => actions.focusOrShowNoteInNewWindow(displayValue.id)}
         >
           Open
-        </Button>
-      </Flex>
+        </ButtonLoose>
+      </FlexLoose>
     </Row>
   );
 };

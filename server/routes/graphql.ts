@@ -47,6 +47,7 @@ export default ({
   maps,
   settings,
   emitter,
+  roleMiddleware,
 }: Dependencies) => {
   const pubSub = createPubSub<PubSubConfig>();
 
@@ -153,41 +154,48 @@ export default ({
   });
 
   // TODO: this should definitely be moved somewhere else
-  router.put(/^\/files\/(.+)$/, (req, res) => {
+  router.put(/^\/files\/(.+)$/, roleMiddleware.dm, (req, res) => {
     const filePath = req.params[0] as string;
-    if (filePath.includes("..")) {
-      throw new Error("Invalid request.");
+
+    // Only accept a path that exactly matches a pending upload registration:
+    // "<directory>/<registered id>.<registered extension>". Anything else
+    // (path traversal, mismatching extension such as ".html", ...) is refused.
+    const match = /^(token-image|map-image)\/([^/.]+)\.([a-z0-9]{1,10})$/i.exec(
+      filePath
+    );
+    if (match === null) {
+      res.status(400).send("Invalid request.");
+      return;
     }
-    if (filePath.startsWith("token-image/")) {
-      const id = filePath.replace("token-image/", "").split(".")[0];
-      if (tokenImageUploadRegister.has(id)) {
-        const targetPath = path.join(fileStoragePath, filePath);
-        fs.mkdirpSync(path.dirname(targetPath));
-        const writeStream = fs.createWriteStream(
-          path.join(fileStoragePath, filePath)
-        );
-        req.pipe(writeStream);
-        writeStream.on("close", () => {
-          res.send("Done.");
-        });
-        return;
-      }
-    } else if (filePath.startsWith("map-image/")) {
-      const id = filePath.replace("map-image/", "").split(".")[0];
-      if (mapImageUploadRegister.has(id)) {
-        const targetPath = path.join(fileStoragePath, filePath);
-        fs.mkdirpSync(path.dirname(targetPath));
-        const writeStream = fs.createWriteStream(
-          path.join(fileStoragePath, filePath)
-        );
-        req.pipe(writeStream);
-        writeStream.on("close", () => {
-          res.send("Done.");
-        });
-        return;
-      }
+    const [, directory, id, extension] = match;
+    const register =
+      directory === "token-image"
+        ? tokenImageUploadRegister
+        : mapImageUploadRegister;
+    const record = register.get(id);
+    if (
+      record === undefined ||
+      record.fileExtension.toLowerCase() !== extension.toLowerCase()
+    ) {
+      res.status(401).send("Error");
+      return;
     }
-    res.status(401).send("Error");
+
+    const targetPath = path.join(
+      fileStoragePath,
+      directory,
+      `${id}.${record.fileExtension}`
+    );
+    fs.mkdirpSync(path.dirname(targetPath));
+    const writeStream = fs.createWriteStream(targetPath);
+    req.pipe(writeStream);
+    writeStream.once("error", (err) => {
+      console.error(err);
+      res.status(500).send("Error");
+    });
+    writeStream.once("close", () => {
+      res.send("Done.");
+    });
   });
 
   router.use(

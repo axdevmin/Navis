@@ -43,6 +43,7 @@ const CombatTrackerMapFragment = graphql`
         imageUrl
         isVisibleForPlayers
         isDown
+        tokenId
       }
     }
   }
@@ -477,6 +478,18 @@ const InitiativeBadge = styled.span`
   text-align: right;
 `;
 
+const TokenLinkBadge = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: ${ds.colors.accent};
+  opacity: 0.8;
+
+  svg {
+    stroke: currentColor;
+  }
+`;
+
 const RowActions = styled.div`
   display: flex;
   align-items: center;
@@ -605,6 +618,32 @@ export const CombatTracker = (props: {
   const combat = map.combat;
   const mapId = map.id;
 
+  // Automatically keep the active participant visible: with many participants
+  // the list scrolls down as the round advances and jumps back to the top on
+  // a new round. Useful on player screens projected on a table where nobody
+  // can scroll manually. The scroll offset is computed manually and the
+  // active row is centered in the list.
+  const listRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!combat.isActive || !combat.currentParticipantId || collapsed) return;
+    const frame = requestAnimationFrame(() => {
+      const list = listRef.current;
+      if (!list || list.scrollHeight <= list.clientHeight) return;
+      const row = list.querySelector<HTMLElement>(
+        `[data-participant-id="${combat.currentParticipantId}"]`
+      );
+      if (!row) return;
+      const rowTopInList = row.offsetTop - list.offsetTop;
+      const target =
+        rowTopInList - (list.clientHeight - row.clientHeight) / 2;
+      list.scrollTo({
+        top: Math.max(0, Math.min(target, list.scrollHeight)),
+        behavior: "smooth",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [combat.isActive, combat.currentParticipantId, collapsed]);
+
   React.useEffect(() => {
     if (!props.isEditable || !combat.isActive) return;
 
@@ -637,7 +676,12 @@ export const CombatTracker = (props: {
     return null;
   }
 
-  const participants = combat.participants;
+  // Players must not see participants that are hidden by the DM.
+  const participants = props.isEditable
+    ? combat.participants
+    : combat.participants.filter(
+        (participant) => participant.isVisibleForPlayers
+      );
 
   const moveParticipant = (draggedId: string, targetId: string) => {
     if (draggedId === targetId) return;
@@ -761,6 +805,7 @@ export const CombatTracker = (props: {
             </AddForm>
           ) : null}
           <List
+            ref={listRef}
             onDragOver={(ev) => {
               if (
                 props.isEditable &&
@@ -829,6 +874,7 @@ export const CombatTracker = (props: {
                 return (
                   <Row
                     key={participant.id}
+                    data-participant-id={participant.id}
                     isCurrent={isCurrent}
                     isDragOver={dragOverId === participant.id}
                     draggable={props.isEditable}
@@ -895,6 +941,11 @@ export const CombatTracker = (props: {
                         {participant.name}
                       </Name>
                     )}
+                    {props.isEditable && participant.tokenId ? (
+                      <TokenLinkBadge title="Lié à un token sur la carte">
+                        <Icon.Target boxSize="12px" />
+                      </TokenLinkBadge>
+                    ) : null}
                     <InitiativeBadge>{participant.initiative}</InitiativeBadge>
                     {props.isEditable ? (
                       <RowActions>

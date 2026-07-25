@@ -10,6 +10,21 @@ import {
   PopoverTrigger,
 } from "@chakra-ui/react";
 import { button, useControls, useCreateStore, LevaInputs } from "leva";
+
+// Chakra's style props make TypeScript build a union too complex to represent
+// (TS2590) at this call site; the loose alias avoids it.
+const ButtonGroupLoose = ButtonGroup as React.ComponentType<{
+  [key: string]: unknown;
+}>;
+const ButtonLoose = Button as React.ComponentType<{
+  [key: string]: unknown;
+}>;
+const IconButtonLoose = IconButton as React.ComponentType<{
+  [key: string]: unknown;
+}>;
+const PopoverContentLoose = PopoverContent as React.ComponentType<{
+  [key: string]: unknown;
+}>;
 import * as t from "io-ts";
 import { flow, identity } from "fp-ts/function";
 import * as E from "fp-ts/Either";
@@ -221,8 +236,8 @@ const ComplexChatMessageButton = (props: {
   });
 
   return (
-    <ButtonGroup size="xs" isAttached variant="outline">
-      <Button
+    <ButtonGroupLoose size="xs" isAttached variant="outline">
+      <ButtonLoose
         onClick={() => {
           if (!props.message) {
             return;
@@ -242,14 +257,14 @@ const ComplexChatMessageButton = (props: {
         }}
       >
         {props.children}
-      </Button>
+      </ButtonLoose>
       {props.controls.size > 0 ? (
         <Popover placement="right">
           <PopoverTrigger>
-            <IconButton aria-label="Apply options" icon={<Icon.Right />} />
+            <IconButtonLoose aria-label="Apply options" icon={<Icon.Right />} />
           </PopoverTrigger>
           <Portal>
-            <PopoverContent maxWidth={200}>
+            <PopoverContentLoose maxWidth={200}>
               <PopoverArrow />
               <ThemedLevaPanel
                 fill={true}
@@ -259,10 +274,10 @@ const ComplexChatMessageButton = (props: {
                 oneLineLabels
                 hideCopyButton
               />
-            </PopoverContent>
+            </PopoverContentLoose>
           </Portal>
         </Popover>
       ) : null}
-    </ButtonGroup>
+    </ButtonGroupLoose>
   );
 };

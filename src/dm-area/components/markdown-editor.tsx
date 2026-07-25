@@ -5,6 +5,11 @@ import { parseDocument } from "htmlparser2";
 import MonacoEditor, { useMonaco, Monaco } from "@monaco-editor/react";
 import type * as monacoEditor from "monaco-editor/esm/vs/editor/editor.api";
 import { Flex, Box } from "@chakra-ui/react";
+
+// Chakra's style props make TypeScript build a union too complex to represent
+// (TS2590) at these call sites; the loose aliases avoid it.
+const FlexLoose = Flex as React.ComponentType<{ [key: string]: unknown }>;
+const BoxLoose = Box as React.ComponentType<{ [key: string]: unknown }>;
 import * as Button from "../../button";
 import { sendRequest, ISendRequestTask } from "../../http-request";
 import { buildApiUrl } from "../../public-url";
@@ -1005,8 +1010,8 @@ export const MarkdownEditor: React.FC<{
           <Icon.Columns />
         </ToolBarButton>
       </TextToolBar>
-      <Flex overflow="hidden" height="100%">
-        <Box
+      <FlexLoose overflow="hidden" height="100%">
+        <BoxLoose
           flex="1"
           position="relative"
           maxWidth={isSplitView ? "50%" : undefined}
@@ -1095,13 +1100,13 @@ export const MarkdownEditor: React.FC<{
               });
             }}
           />
-        </Box>
+        </BoxLoose>
         {isSplitView ? (
-          <Box flex="1" overflowY="scroll" padding="2">
+          <BoxLoose flex="1" overflowY="scroll" padding="2">
             <HtmlContainer markdown={value} />
-          </Box>
+          </BoxLoose>
         ) : null}
-      </Flex>
+      </FlexLoose>
       {uploadImageNode}
       {menu && sideBarRef.current
         ? ReactDom.createPortal(

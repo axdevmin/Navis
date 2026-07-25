@@ -21,6 +21,23 @@ import {
   NumberDecrementStepper,
   useToast,
 } from "@chakra-ui/react";
+import { loose } from "../chakra-loose";
+
+const BoxLoose = loose(Box);
+const FormControlLoose = loose(FormControl);
+const FormLabelLoose = loose(FormLabel);
+const HeadingLoose = loose(Heading);
+const SwitchLoose = loose(Switch);
+const VStackLoose = loose(VStack);
+const HStackLoose = loose(HStack);
+const TextLoose = loose(Text);
+const InputGroupLoose = loose(InputGroup);
+const StackLoose = loose(Stack);
+const NumberInputLoose = loose(NumberInput);
+const NumberInputFieldLoose = loose(NumberInputField);
+const NumberInputStepperLoose = loose(NumberInputStepper);
+const NumberIncrementStepperLoose = loose(NumberIncrementStepper);
+const NumberDecrementStepperLoose = loose(NumberDecrementStepper);
 import graphql from "babel-plugin-relay/macro";
 import { ReactRelayContext, useFragment, useMutation } from "relay-hooks";
 import * as Icon from "../feather-icons";
@@ -304,56 +321,56 @@ const ShowGridSettingsPopup = React.memo(
 
     return (
       <Toolbar.Popup>
-        <VStack minWidth="300px" padding="3">
-          <HStack width="100%" justifyContent="space-between">
-            <Box>
-              <Heading size="xs">Paramètres de grille</Heading>
-            </Box>
+        <VStackLoose minWidth="300px" padding="3">
+          <HStackLoose width="100%" justifyContent="space-between">
+            <BoxLoose>
+              <HeadingLoose size="xs">Paramètres de grille</HeadingLoose>
+            </BoxLoose>
 
-            <Box>
+            <BoxLoose>
               <Button.Tertiary small onClick={props.enterConfigureGridMode}>
                 <span>Modifier </span>
                 <Icon.Settings boxSize="12px" />
               </Button.Tertiary>
-            </Box>
-          </HStack>
+            </BoxLoose>
+          </HStackLoose>
 
-          <FormControl
+          <FormControlLoose
             display="flex"
             alignItems="center"
             justifyContent="space-between"
           >
-            <FormLabel htmlFor="show-grid-toggle">Afficher la grille</FormLabel>
-            <Switch
+            <FormLabelLoose htmlFor="show-grid-toggle">Afficher la grille</FormLabelLoose>
+            <SwitchLoose
               id="show-grid-toggle"
               size="lg"
               isChecked={showGrid}
-              onChange={(ev) => {
+              onChange={(ev: React.ChangeEvent<HTMLInputElement>) => {
                 setShowGrid(ev.target.checked);
                 syncState();
               }}
             />
-          </FormControl>
-          <FormControl
+          </FormControlLoose>
+          <FormControlLoose
             display="flex"
             alignItems="center"
             justifyContent="space-between"
           >
-            <FormLabel htmlFor="show-grid-to-players-toggle">
+            <FormLabelLoose htmlFor="show-grid-to-players-toggle">
               Afficher aux joueurs
-            </FormLabel>
-            <Switch
+            </FormLabelLoose>
+            <SwitchLoose
               id="show-grid-to-players-toggle"
               size="lg"
               isChecked={showGridToPlayers}
-              onChange={(ev) => {
+              onChange={(ev: React.ChangeEvent<HTMLInputElement>) => {
                 setShowGridToPlayers(ev.target.checked);
                 syncState();
               }}
             />
-          </FormControl>
-          <FormControl>
-            <FormLabel>Couleur</FormLabel>
+          </FormControlLoose>
+          <FormControlLoose>
+            <FormLabelLoose>Couleur</FormLabelLoose>
             <ColorPickerInput
               color={gridColor}
               onChange={(color) => {
@@ -361,8 +378,8 @@ const ShowGridSettingsPopup = React.memo(
                 syncState();
               }}
             />
-          </FormControl>
-        </VStack>
+          </FormControlLoose>
+        </VStackLoose>
       </Toolbar.Popup>
     );
   }
@@ -1419,7 +1436,7 @@ const GridConfigurator = (props: {
   const { state, setState } = React.useContext(ConfigureGridMapToolContext);
 
   return (
-    <Stack
+    <StackLoose
       position="absolute"
       top="50%"
       left="50%"
@@ -1435,21 +1452,21 @@ const GridConfigurator = (props: {
       zIndex="1"
       color="white"
     >
-      <Heading size="md" color="white">
+      <HeadingLoose size="md" color="white">
         Configurateur de grille
-      </Heading>
-      <Text fontSize="sm" color="rgba(255,255,255,0.6)">
+      </HeadingLoose>
+      <TextLoose fontSize="sm" color="rgba(255,255,255,0.6)">
         Maintenez <strong>Alt</strong> pour déplacer la grille à la souris.
-      </Text>
-      <HStack>
-        <FormControl>
-          <FormLabel color="rgba(255,255,255,0.8)" fontSize="sm">
+      </TextLoose>
+      <HStackLoose>
+        <FormControlLoose>
+          <FormLabelLoose color="rgba(255,255,255,0.8)" fontSize="sm">
             Coordonnée X
-          </FormLabel>
-          <InputGroup size="sm">
-            <NumberInput
+          </FormLabelLoose>
+          <InputGroupLoose size="sm">
+            <NumberInputLoose
               value={state.offsetX}
-              onChange={(valueString) => {
+              onChange={(valueString: string) => {
                 let offsetX = parseFloat(valueString);
                 if (Number.isNaN(offsetX)) {
                   offsetX = 0;
@@ -1460,7 +1477,7 @@ const GridConfigurator = (props: {
                 }));
               }}
             >
-              <NumberInputField
+              <NumberInputFieldLoose
                 bg="rgba(255,255,255,0.07)"
                 border="1px solid rgba(255,255,255,0.15)"
                 color="white"
@@ -1470,27 +1487,27 @@ const GridConfigurator = (props: {
                   boxShadow: "none",
                 }}
               />
-              <NumberInputStepper>
-                <NumberIncrementStepper
+              <NumberInputStepperLoose>
+                <NumberIncrementStepperLoose
                   color="rgba(255,255,255,0.5)"
                   border="none"
                 />
-                <NumberDecrementStepper
+                <NumberDecrementStepperLoose
                   color="rgba(255,255,255,0.5)"
                   border="none"
                 />
-              </NumberInputStepper>
-            </NumberInput>
-          </InputGroup>
-        </FormControl>
-        <FormControl>
-          <FormLabel color="rgba(255,255,255,0.8)" fontSize="sm">
+              </NumberInputStepperLoose>
+            </NumberInputLoose>
+          </InputGroupLoose>
+        </FormControlLoose>
+        <FormControlLoose>
+          <FormLabelLoose color="rgba(255,255,255,0.8)" fontSize="sm">
             Coordonnée Y
-          </FormLabel>
-          <InputGroup size="sm">
-            <NumberInput
+          </FormLabelLoose>
+          <InputGroupLoose size="sm">
+            <NumberInputLoose
               value={state.offsetY}
-              onChange={(valueString) => {
+              onChange={(valueString: string) => {
                 let offsetY = parseFloat(valueString);
                 if (Number.isNaN(offsetY)) {
                   offsetY = 0;
@@ -1501,7 +1518,7 @@ const GridConfigurator = (props: {
                 }));
               }}
             >
-              <NumberInputField
+              <NumberInputFieldLoose
                 bg="rgba(255,255,255,0.07)"
                 border="1px solid rgba(255,255,255,0.15)"
                 color="white"
@@ -1511,29 +1528,29 @@ const GridConfigurator = (props: {
                   boxShadow: "none",
                 }}
               />
-              <NumberInputStepper>
-                <NumberIncrementStepper
+              <NumberInputStepperLoose>
+                <NumberIncrementStepperLoose
                   color="rgba(255,255,255,0.5)"
                   border="none"
                 />
-                <NumberDecrementStepper
+                <NumberDecrementStepperLoose
                   color="rgba(255,255,255,0.5)"
                   border="none"
                 />
-              </NumberInputStepper>
-            </NumberInput>
-          </InputGroup>
-        </FormControl>
-      </HStack>
-      <HStack>
-        <FormControl>
-          <FormLabel color="rgba(255,255,255,0.8)" fontSize="sm">
+              </NumberInputStepperLoose>
+            </NumberInputLoose>
+          </InputGroupLoose>
+        </FormControlLoose>
+      </HStackLoose>
+      <HStackLoose>
+        <FormControlLoose>
+          <FormLabelLoose color="rgba(255,255,255,0.8)" fontSize="sm">
             Largeur colonne
-          </FormLabel>
-          <InputGroup size="sm">
-            <NumberInput
+          </FormLabelLoose>
+          <InputGroupLoose size="sm">
+            <NumberInputLoose
               value={state.columnWidth}
-              onChange={(valueString) => {
+              onChange={(valueString: string) => {
                 let columnWidth = parseFloat(valueString);
                 if (Number.isNaN(columnWidth)) {
                   columnWidth = 0;
@@ -1544,7 +1561,7 @@ const GridConfigurator = (props: {
                 }));
               }}
             >
-              <NumberInputField
+              <NumberInputFieldLoose
                 bg="rgba(255,255,255,0.07)"
                 border="1px solid rgba(255,255,255,0.15)"
                 color="white"
@@ -1554,27 +1571,27 @@ const GridConfigurator = (props: {
                   boxShadow: "none",
                 }}
               />
-              <NumberInputStepper>
-                <NumberIncrementStepper
+              <NumberInputStepperLoose>
+                <NumberIncrementStepperLoose
                   color="rgba(255,255,255,0.5)"
                   border="none"
                 />
-                <NumberDecrementStepper
+                <NumberDecrementStepperLoose
                   color="rgba(255,255,255,0.5)"
                   border="none"
                 />
-              </NumberInputStepper>
-            </NumberInput>
-          </InputGroup>
-        </FormControl>
-        <FormControl>
-          <FormLabel color="rgba(255,255,255,0.8)" fontSize="sm">
+              </NumberInputStepperLoose>
+            </NumberInputLoose>
+          </InputGroupLoose>
+        </FormControlLoose>
+        <FormControlLoose>
+          <FormLabelLoose color="rgba(255,255,255,0.8)" fontSize="sm">
             Hauteur colonne
-          </FormLabel>
-          <InputGroup size="sm">
-            <NumberInput
+          </FormLabelLoose>
+          <InputGroupLoose size="sm">
+            <NumberInputLoose
               value={state.columnHeight}
-              onChange={(valueString) => {
+              onChange={(valueString: string) => {
                 let columnHeight = parseFloat(valueString);
                 if (Number.isNaN(columnHeight)) {
                   columnHeight = 0;
@@ -1585,7 +1602,7 @@ const GridConfigurator = (props: {
                 }));
               }}
             >
-              <NumberInputField
+              <NumberInputFieldLoose
                 bg="rgba(255,255,255,0.07)"
                 border="1px solid rgba(255,255,255,0.15)"
                 color="white"
@@ -1595,20 +1612,20 @@ const GridConfigurator = (props: {
                   boxShadow: "none",
                 }}
               />
-              <NumberInputStepper>
-                <NumberIncrementStepper
+              <NumberInputStepperLoose>
+                <NumberIncrementStepperLoose
                   color="rgba(255,255,255,0.5)"
                   border="none"
                 />
-                <NumberDecrementStepper
+                <NumberDecrementStepperLoose
                   color="rgba(255,255,255,0.5)"
                   border="none"
                 />
-              </NumberInputStepper>
-            </NumberInput>
-          </InputGroup>
-        </FormControl>
-      </HStack>
+              </NumberInputStepperLoose>
+            </NumberInputLoose>
+          </InputGroupLoose>
+        </FormControlLoose>
+      </HStackLoose>
 
       <div
         style={{ display: "flex", marginTop: 16, justifyContent: "flex-end" }}
@@ -1651,6 +1668,6 @@ const GridConfigurator = (props: {
           </Button.Primary>
         </div>
       </div>
-    </Stack>
+    </StackLoose>
   );
 };

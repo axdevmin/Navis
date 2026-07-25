@@ -5,6 +5,11 @@ import {
   Components as LevaComponents,
 } from "leva/plugin";
 import { Box, Button, HStack } from "@chakra-ui/react";
+import { loose } from "../chakra-loose";
+
+const BoxLoose = loose(Box);
+const ButtonLoose = loose(Button);
+const HStackLoose = loose(HStack);
 import { useNoteWindowActions } from "../dm-area/token-info-aside";
 import { useShowSelectNoteModal } from "../dm-area/select-note-modal";
 
@@ -21,29 +26,29 @@ const NoteReference = () => {
       <Row input>
         <Label>Reference</Label>
 
-        <HStack alignItems="center" spacing={1}>
+        <HStackLoose alignItems="center" spacing={1}>
           {displayValue ? (
             <>
-              <Box justifySelf="flexStart">Note</Box>
-              <Button
+              <BoxLoose justifySelf="flexStart">Note</BoxLoose>
+              <ButtonLoose
                 size="xs"
                 onClick={() => {
                   setValue(null);
                 }}
               >
                 Remove
-              </Button>
-              <Button
+              </ButtonLoose>
+              <ButtonLoose
                 size="xs"
                 onClick={() => {
                   noteWindowActions.focusOrShowNoteInNewWindow(displayValue);
                 }}
               >
                 Edit
-              </Button>
+              </ButtonLoose>
             </>
           ) : (
-            <Button
+            <ButtonLoose
               size="xs"
               onClick={() => {
                 showSelectNoteModal((noteId) => {
@@ -52,9 +57,9 @@ const NoteReference = () => {
               }}
             >
               Link
-            </Button>
+            </ButtonLoose>
           )}
-        </HStack>
+        </HStackLoose>
       </Row>
     </>
   );

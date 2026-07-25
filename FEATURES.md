@@ -1,6 +1,6 @@
 # Navis — Roadmap
 
-> Dernière mise à jour : 2026-07-24
+> Dernière mise à jour : 2026-07-25
 
 ---
 
@@ -10,6 +10,7 @@
 - **Bibliothèque de personnages** — personnages persistés en base (nom, camp, couleur, portrait via le système de token image existant), créés/supprimés depuis la modale "Bibliothèque" (ex-Médias, désormais à onglets Personnages/Images), réutilisables par drag & drop sur la carte ou dans le combat (actif ou en préparation), ou en un clic "Ajouter sur la carte" / "Depuis la bibliothèque". Un token déjà placé peut aussi être enregistré comme personnage ("💾 Enregistrer comme personnage" dans ses propriétés). Bouton "Bibliothèque" (ex-Médias) et "Cartes" (ex-Bibliothèque) renommés en conséquence. Renommage inline des participants de combat au clic.
 - **Fix : clic droit sur un token → "Afficher les propriétés"** — le clic droit ouvrait le menu contextuel sans sélectionner le token, rendant l'action invisible ; corrigé (sélection automatique au clic droit, comme au clic gauche).
 - **Fix : icônes de tokens noires sur la carte** — les 24 SVG de la bibliothèque de tokens n'avaient pas d'attributs `width`/`height` (seulement `viewBox`), ce qui faisait échouer leur rendu en texture Three.js (rendu noir). Ajout de `width="512" height="512"` sur chaque SVG.
+- **Roulement de dé visible aux joueurs** — le bouton "Dés" de la toolbar MJ diffuse le résultat à tous les viewers de la carte (`diceRoll` subscription, `DiceRollRenderer` partagé dans `MapView`, animation 3D visible MJ + joueurs).
 - **Météo** — pluie, orage, neige, soleil. Intensité + angle vent. Sync DM→joueurs via GraphQL live.
 - **Brouillard de guerre organique** — shader GLSL avec FBM + domain warping. Vue DM et joueurs séparées.
 - **UI transparente unifiée** — glassmorphism (backdrop-filter blur) sur tous les toolbars DM et joueur, boutons chat. Prop `transparent` dans `Toolbar`. Badge version masqué côté joueur.
@@ -23,20 +24,26 @@
 
 ### Haute priorité
 
+- [ ] **Backup & restauration complète** — export de toutes les données d'une instance (cartes, tokens, personnages de bibliothèque, médias, fog, notes, config) en une archive unique réimportable sur une autre instance sans rien perdre. Nécessite : un endpoint/mutation d'export qui bundle la DB SQLite (notes, tokenImages, libraryCharacters) + les dossiers `data/maps/*` (JSON + images de fog/carte) + `data/files/*` (médias, portraits) ; un import qui restaure proprement en gérant les collisions d'ID ; idéalement testé par un aller-retour export→import→comparaison.
+- [ ] **Stockage externalisé des ressources (S3-compatible)** — remplacer le stockage disque local des images (cartes, tokens, personnages, médias) par un stockage objet externe (S3 / MinIO / Cloudflare R2), avec fallback disque en dev. Prérequis pour fiabiliser le backup ci-dessus à terme (les assets ne dépendent plus du volume de l'instance) et pour une future synchro/sauvegarde cloud des parties.
 - [ ] **Effets de zone** — feu, explosion, foudre, eau (Three.js, persistants DB, mutations `mapEffectAdd/Remove`)
 - [ ] **Sceau magique au sol** — rune / cercle magique persistant sur la carte, dessiné par le DM, couleur + intensité configurable, rendu Three.js (ShaderMaterial ou sprite animé)
 - [ ] **Zones météo exclues** — le DM délimite des polygones/rectangles sur la carte où la météo ne s'applique pas (intérieur, sous un toit) ; les particules pluie/neige sont clippées hors de ces zones
 - [ ] **Éclairage dynamique** — sources lumineuses DM, halo animé, radius + couleur, impact tokens
 - [ ] **Portes & Murs** — entités sur carte, état ouvert/fermé, bloquant la vision
 - [ ] **Docker Compose** — `docker-compose.yml` + `.env.example`, déploiement one-liner
-- [ ] **CI pipeline** — GitHub Actions : lint + tests + build Docker sur chaque PR
+- [ ] **CI pipeline** — 🟡 partiel : `deploy.yml` build+push+déploie sur VPS à chaque push sur master, `docker.yml` en déclenchement manuel — mais pas de lint/tests automatiques sur les PR
+- [ ] **Monitoring prod & logs** — rien en place actuellement (pas de Sentry/logs centralisés/alerting). À adosser au pipeline GitHub Actions existant (`deploy.yml`) : healthcheck post-déploiement, agrégation de logs, alerting basique
 
 ### Moyenne priorité
 
+- [ ] **Dissocier mode plateau et mode multijoueur** — séparer clairement le mode "plateau" (un seul écran partagé passif, ex. TV à table, sans identité individuelle) du mode "multijoueur" (chaque joueur se connecte depuis son propre appareil avec sa propre identité : ping, chat, présence). Aujourd'hui mélangés dans la même vue joueur (`isMapOnly` ne couvre qu'une partie du besoin) — à repenser au niveau session/connexion, pas juste affichage.
 - [ ] **Tokens enrichis** — portrait, classe, barre de vie configurable par le DM
 - [ ] **État mort** — token grisé + icône, reste visible, filtrable
 - [ ] **Dialogue bubbles** — bulle texte au-dessus d'un token, durée configurable
 - [ ] **Ping amélioré** — curseur animé avec nom du joueur (ping basique dans `dm-map.tsx`)
+- [ ] **App Android (Capacitor)** — 🟡 partiel : projet Android déjà scaffoldé et buildé avec Gradle (`android/`, ~166 Mo d'artefacts), mais aucune dépendance `@capacitor/*` dans `package.json`, aucun `capacitor.config`, rien d'intégré au pipeline npm — à finaliser proprement. Question ouverte : désactiver chat + toolbar complète sur la version Android (garder juste la carte) ?
+- [ ] **Environnement séparé pour cartes secrètes** — actuellement une seule config de prod (`render.yaml`), pas de séparation d'environnement permettant de préparer/stocker des cartes secrètes à l'écart de l'instance visible par les joueurs. À préciser : environnement de "brouillon" séparé, ou simple contrôle de visibilité par carte ?
 
 ### Basse priorité
 
@@ -44,6 +51,9 @@
 - [ ] **Indicateurs sonores** — icône source sonore sur la carte (ambiance, musique de zone)
 - [ ] **Hosting docs** — guide déploiement VPS / Fly.io / Railway
 - [ ] **GitHub Kanban** — issues + project board
+- [ ] **Dossier de cartes** — organiser les cartes en dossiers/catégories dans la bibliothèque (aujourd'hui : liste plate uniquement)
+- [ ] **Infos enrichies dans la liste des cartes** — 🟡 partiel : titre, vignette et icône météo déjà affichés ; manque l'état du fog, le type de média (image/animation/vidéo) et le nombre de tokens en un coup d'œil
+- [ ] **Versionning de carte** — historique/undo des modifications d'une carte (aujourd'hui : `fogProgressRevision`/`fogLiveRevision` ne sont que des cache-busters, pas un vrai historique)
 
 ---
 
@@ -67,7 +77,7 @@
 - **react-three-fiber v5** — Canvas isolé, `ContextBridge`
 - **Three.js 0.126** — `DynamicDrawUsage` + particle systems
 - **GLSL** — fog avec `noise2D` + fbm + domain warping
-- **SQLite3 6** + 4 migrations versionnées (`server/migrations/`)
+- **SQLite3 6** + 5 migrations versionnées (`server/migrations/`)
 - **patch-package** — patches engine.io, react-spring/three, relay-compiler, use-sound
 
 ```bash

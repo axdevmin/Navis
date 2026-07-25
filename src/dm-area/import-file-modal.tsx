@@ -16,6 +16,8 @@ import { importFileModal_MapImageRequestUploadMutation } from "./__generated__/i
 import { importFileModal_MapCreateMutation } from "./__generated__/importFileModal_MapCreateMutation.graphql";
 import type { MediaType } from "../../server/media-types";
 import { getMediaTypeFromExtension } from "../../server/media-types";
+import { uploadFile } from "../upload-file";
+import { ProgressBar } from "../progress-bar";
 
 const OrSeperator = styled.span`
   padding-left: 18px;
@@ -32,6 +34,24 @@ const PreviewImage = styled.img`
   display: block;
   height: 50vh;
   width: auto;
+`;
+
+const PreviewVideo = styled.video`
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+  height: 50vh;
+  width: auto;
+`;
+
+const ErrorMessage = styled.div`
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: rgba(220, 38, 38, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  color: #b91c1c;
+  white-space: pre-wrap;
 `;
 
 const FileTitle = styled.div`
@@ -106,7 +126,13 @@ const ImageImportModal: React.FC<{
   close: () => void;
 }> = ({ file, close }) => {
   const [objectUrl, setObjectUrl] = React.useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [uploadState, setUploadState] = React.useState<{
+    label: string;
+    fraction: number | null;
+  } | null>(null);
   const accessToken = useAccessToken();
+  const isVideoFile = file.type.startsWith("video/");
 
   // Auto-detect media type from extension
   const detectedMediaType = React.useMemo(() => {
@@ -149,78 +175,114 @@ const ImageImportModal: React.FC<{
 
   const [isCreatingMap, onClickCreateMap] = useAsyncTask(
     React.useCallback(async () => {
-      // Validate file size
-      if (file.size > maxFileSize) {
-        const sizeInMB = (maxFileSize / (1024 * 1024)).toFixed(0);
-        throw new Error(
-          `File size (${(file.size / (1024 * 1024)).toFixed(
-            1
-          )}MB) exceeds maximum allowed size of ${sizeInMB}MB for ${mediaType} format.`
-        );
-      }
-
-      const hash = await generateSHA256FileHash(file);
-      // 1. request file upload
-      const result = await mapImageRequestUpload({
-        variables: {
-          input: {
-            sha256: hash,
-            extension: file.name.split(".").pop() ?? "",
-            mediaType: mediaType as "image" | "gif" | "video",
-          },
-        },
-      });
-
-      // 2. upload file
-      const uploadResponse = await fetch(
-        result.mapImageRequestUpload.uploadUrl,
-        {
-          method: "PUT",
-          body: file,
+      setErrorMessage(null);
+      try {
+        // Validate file size
+        if (file.size > maxFileSize) {
+          const sizeInMB = (maxFileSize / (1024 * 1024)).toFixed(0);
+          throw new Error(
+            `Le fichier (${(file.size / (1024 * 1024)).toFixed(
+              1
+            )} Mo) dépasse la taille maximale de ${sizeInMB} Mo pour le format « ${mediaType} ».`
+          );
         }
-      );
 
-      if (uploadResponse.status !== 200) {
-        const body = await uploadResponse.text();
-        throw new Error(
-          "Received invalid response code: " +
-            uploadResponse.status +
-            "\n\n" +
-            body
-        );
-      }
-
-      // 3. create map
-      await mapCreate({
-        variables: {
-          input: {
-            title: file.name,
-            mapImageUploadId: result.mapImageRequestUpload.id,
+        setUploadState({ label: "Préparation du fichier…", fraction: null });
+        const hash = await generateSHA256FileHash(file);
+        // 1. request file upload
+        const result = await mapImageRequestUpload({
+          variables: {
+            input: {
+              sha256: hash,
+              extension: file.name.split(".").pop() ?? "",
+              mediaType: mediaType as "image" | "gif" | "video",
+            },
           },
-        },
-        onCompleted: () => {
-          close();
-        },
-      });
-    }, [file, fileTitleWithoutExtension, close])
+        });
+
+        // 2. upload file
+        setUploadState({ label: "Envoi du fichier…", fraction: 0 });
+        const uploadTask = uploadFile({
+          url: result.mapImageRequestUpload.uploadUrl,
+          body: file,
+          headers: {
+            Authorization: accessToken ? `Bearer ${accessToken}` : null,
+          },
+          onProgress: (progress) =>
+            setUploadState({
+              label: "Envoi du fichier…",
+              fraction: progress.fraction,
+            }),
+        });
+        const uploadResult = await uploadTask.done;
+
+        if (uploadResult.type === "abort") {
+          return;
+        }
+        if (uploadResult.type === "error") {
+          throw new Error(
+            `L'envoi du fichier a échoué (code ${uploadResult.status}).` +
+              (uploadResult.responseText
+                ? `\n\n${uploadResult.responseText}`
+                : "")
+          );
+        }
+
+        // 3. create map
+        setUploadState({ label: "Création de la carte…", fraction: null });
+        const createResult = await mapCreate({
+          variables: {
+            input: {
+              title: file.name,
+              mapImageUploadId: result.mapImageRequestUpload.id,
+            },
+          },
+        });
+        if (createResult.mapCreate.__typename === "MapCreateError") {
+          throw new Error(
+            `La création de la carte a échoué : ${createResult.mapCreate.reason}`
+          );
+        }
+        close();
+      } catch (err) {
+        setErrorMessage(
+          err instanceof Error ? err.message : "Une erreur est survenue."
+        );
+      } finally {
+        setUploadState(null);
+      }
+    }, [file, mediaType, maxFileSize, accessToken, close])
   );
 
   const [isImportingMediaLibraryItem, onClickImportMediaLibraryItem] =
     useAsyncTask(
       React.useCallback(async () => {
+        setErrorMessage(null);
+        setUploadState({ label: "Envoi du fichier…", fraction: 0 });
         const formData = new FormData();
         formData.append("file", file);
 
-        const task = sendRequest({
+        const task = uploadFile({
           url: buildApiUrl("/images"),
           method: "POST",
           body: formData,
           headers: {
             Authorization: accessToken ? `Bearer ${accessToken}` : null,
           },
+          onProgress: (progress) =>
+            setUploadState({
+              label: "Envoi du fichier…",
+              fraction: progress.fraction,
+            }),
         });
 
-        await task.done;
+        const result = await task.done;
+        setUploadState(null);
+        if (result.type === "abort") return;
+        if (result.type !== "success") {
+          setErrorMessage("L'import dans la médiathèque a échoué.");
+          return;
+        }
         close();
       }, [file, close, accessToken])
     );
@@ -238,16 +300,30 @@ const ImageImportModal: React.FC<{
         </Modal.Header>
         <Modal.Body>
           {areButtonsDisabled ? (
-            <div style={{ textAlign: "center", padding: "8px 0" }}>
-              <LoadingSpinner state="inProgress" />
-              <p style={{ marginTop: 8, color: "#555" }}>
-                Importation en cours...
-              </p>
+            <div style={{ padding: "8px 0" }}>
+              <div style={{ textAlign: "center" }}>
+                <LoadingSpinner state="inProgress" />
+              </div>
+              <div style={{ marginTop: 16 }}>
+                <ProgressBar
+                  value={uploadState?.fraction ?? null}
+                  label={uploadState?.label ?? "Importation en cours…"}
+                />
+              </div>
             </div>
           ) : (
             <>
-              {objectUrl ? <PreviewImage src={objectUrl} /> : null}
+              {objectUrl ? (
+                isVideoFile ? (
+                  <PreviewVideo src={objectUrl} controls muted loop autoPlay />
+                ) : (
+                  <PreviewImage src={objectUrl} />
+                )
+              ) : null}
               <FileTitle>{fileTitleWithoutExtension}</FileTitle>
+              {errorMessage ? (
+                <ErrorMessage role="alert">{errorMessage}</ErrorMessage>
+              ) : null}
               <MediaTypeSelector>
                 <label>
                   <strong>Type de média :</strong>
