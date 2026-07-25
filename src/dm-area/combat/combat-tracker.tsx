@@ -621,14 +621,27 @@ export const CombatTracker = (props: {
   // Automatically keep the active participant visible: with many participants
   // the list scrolls down as the round advances and jumps back to the top on
   // a new round. Useful on player screens projected on a table where nobody
-  // can scroll manually.
+  // can scroll manually. The scroll offset is computed manually and the
+  // active row is centered in the list.
   const listRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (!combat.isActive || !combat.currentParticipantId || collapsed) return;
-    const row = listRef.current?.querySelector(
-      `[data-participant-id="${combat.currentParticipantId}"]`
-    );
-    row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const frame = requestAnimationFrame(() => {
+      const list = listRef.current;
+      if (!list || list.scrollHeight <= list.clientHeight) return;
+      const row = list.querySelector<HTMLElement>(
+        `[data-participant-id="${combat.currentParticipantId}"]`
+      );
+      if (!row) return;
+      const rowTopInList = row.offsetTop - list.offsetTop;
+      const target =
+        rowTopInList - (list.clientHeight - row.clientHeight) / 2;
+      list.scrollTo({
+        top: Math.max(0, Math.min(target, list.scrollHeight)),
+        behavior: "smooth",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [combat.isActive, combat.currentParticipantId, collapsed]);
 
   React.useEffect(() => {
@@ -663,7 +676,12 @@ export const CombatTracker = (props: {
     return null;
   }
 
-  const participants = combat.participants;
+  // Players must not see participants that are hidden by the DM.
+  const participants = props.isEditable
+    ? combat.participants
+    : combat.participants.filter(
+        (participant) => participant.isVisibleForPlayers
+      );
 
   const moveParticipant = (draggedId: string, targetId: string) => {
     if (draggedId === targetId) return;
