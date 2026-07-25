@@ -18,6 +18,8 @@
     "build:frontend": "node scripts/copy-monaco-editor-files.js && npm run relay-compiler && vite build --base=./",
     "build:backend": "tsc --project server/tsconfig.json",
     "build": "npm run build:frontend && npm run build:backend",
+    "build:android": "node scripts/build-android.js",
+    "build:android:debug": "node scripts/build-android.js --debug",
     "compile": "npx caxa -i . --exclude '*' '.*' '!server-build' '!build' '!package.json' '!package-lock.json' '!node_modules' -o bin/navis-bin -- \"{{caxa}}/node_modules/.bin/node\" \"{{caxa}}/server-build/index.js\" \"--caxa\"",
     "compile:win": "npx caxa -i . --exclude '*' '.*' '!server-build' '!build' '!package.json' '!package-lock.json' '!node_modules' -o bin/navis-bin.exe -- \"{{caxa}}/node_modules/.bin/node\" \"{{caxa}}/server-build/index.js\" \"--caxa\"",
     "eslint": "eslint --ignore-path .gitignore --max-warnings 0 \"**/*.js\" \"bin/navis\"",

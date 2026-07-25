@@ -35,6 +35,10 @@ import type {
 import { useContextBridge } from "./hooks/use-context-bridge";
 import { MapGridEntity, MapTokenEntity, TokenType } from "./map-typings";
 import { useIsKeyPressed } from "./hooks/use-is-key-pressed";
+import {
+  getCanvasPixelRatio,
+  getGraphicsSettings,
+} from "./graphics-quality";
 import * as Icon from "./feather-icons";
 import { TextureLoader } from "three";
 import { ReactEventHandlers } from "react-use-gesture/dist/types";
@@ -2403,9 +2407,13 @@ export const MapView = (props: {
   const canvasContent = (
     <Canvas
       camera={{ position: [0, 0, 5] }}
-      pixelRatio={window.devicePixelRatio}
+      // Capped so a high density screen, or a TV box reporting a ratio above 1,
+      // does not multiply the number of pixels to shade every frame.
+      pixelRatio={getCanvasPixelRatio()}
       gl={{
         stencil: true,
+        antialias: getGraphicsSettings().antialias,
+        powerPreference: "high-performance",
         ...(isYouTubeMap ? { alpha: true } : undefined),
       }}
       style={isYouTubeMap ? { background: "transparent" } : undefined}
