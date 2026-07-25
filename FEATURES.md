@@ -10,6 +10,7 @@
 - **Bibliothèque de personnages** — personnages persistés en base (nom, camp, couleur, portrait via le système de token image existant), créés/supprimés depuis la modale "Bibliothèque" (ex-Médias, désormais à onglets Personnages/Images), réutilisables par drag & drop sur la carte ou dans le combat (actif ou en préparation), ou en un clic "Ajouter sur la carte" / "Depuis la bibliothèque". Un token déjà placé peut aussi être enregistré comme personnage ("💾 Enregistrer comme personnage" dans ses propriétés). Bouton "Bibliothèque" (ex-Médias) et "Cartes" (ex-Bibliothèque) renommés en conséquence. Renommage inline des participants de combat au clic.
 - **Fix : clic droit sur un token → "Afficher les propriétés"** — le clic droit ouvrait le menu contextuel sans sélectionner le token, rendant l'action invisible ; corrigé (sélection automatique au clic droit, comme au clic gauche).
 - **Fix : icônes de tokens noires sur la carte** — les 24 SVG de la bibliothèque de tokens n'avaient pas d'attributs `width`/`height` (seulement `viewBox`), ce qui faisait échouer leur rendu en texture Three.js (rendu noir). Ajout de `width="512" height="512"` sur chaque SVG.
+- **Roulement de dé visible aux joueurs** — le bouton "Dés" de la toolbar MJ diffuse le résultat à tous les viewers de la carte (`diceRoll` subscription, `DiceRollRenderer` partagé dans `MapView`, animation 3D visible MJ + joueurs).
 - **Météo** — pluie, orage, neige, soleil. Intensité + angle vent. Sync DM→joueurs via GraphQL live.
 - **Brouillard de guerre organique** — shader GLSL avec FBM + domain warping. Vue DM et joueurs séparées.
 - **UI transparente unifiée** — glassmorphism (backdrop-filter blur) sur tous les toolbars DM et joueur, boutons chat. Prop `transparent` dans `Toolbar`. Badge version masqué côté joueur.
@@ -31,7 +32,8 @@
 - [ ] **Éclairage dynamique** — sources lumineuses DM, halo animé, radius + couleur, impact tokens
 - [ ] **Portes & Murs** — entités sur carte, état ouvert/fermé, bloquant la vision
 - [ ] **Docker Compose** — `docker-compose.yml` + `.env.example`, déploiement one-liner
-- [ ] **CI pipeline** — GitHub Actions : lint + tests + build Docker sur chaque PR
+- [ ] **CI pipeline** — 🟡 partiel : `deploy.yml` build+push+déploie sur VPS à chaque push sur master, `docker.yml` en déclenchement manuel — mais pas de lint/tests automatiques sur les PR
+- [ ] **Monitoring prod & logs** — rien en place actuellement (pas de Sentry/logs centralisés/alerting). À adosser au pipeline GitHub Actions existant (`deploy.yml`) : healthcheck post-déploiement, agrégation de logs, alerting basique
 
 ### Moyenne priorité
 
@@ -40,6 +42,8 @@
 - [ ] **État mort** — token grisé + icône, reste visible, filtrable
 - [ ] **Dialogue bubbles** — bulle texte au-dessus d'un token, durée configurable
 - [ ] **Ping amélioré** — curseur animé avec nom du joueur (ping basique dans `dm-map.tsx`)
+- [ ] **App Android (Capacitor)** — 🟡 partiel : projet Android déjà scaffoldé et buildé avec Gradle (`android/`, ~166 Mo d'artefacts), mais aucune dépendance `@capacitor/*` dans `package.json`, aucun `capacitor.config`, rien d'intégré au pipeline npm — à finaliser proprement. Question ouverte : désactiver chat + toolbar complète sur la version Android (garder juste la carte) ?
+- [ ] **Environnement séparé pour cartes secrètes** — actuellement une seule config de prod (`render.yaml`), pas de séparation d'environnement permettant de préparer/stocker des cartes secrètes à l'écart de l'instance visible par les joueurs. À préciser : environnement de "brouillon" séparé, ou simple contrôle de visibilité par carte ?
 
 ### Basse priorité
 
@@ -47,6 +51,9 @@
 - [ ] **Indicateurs sonores** — icône source sonore sur la carte (ambiance, musique de zone)
 - [ ] **Hosting docs** — guide déploiement VPS / Fly.io / Railway
 - [ ] **GitHub Kanban** — issues + project board
+- [ ] **Dossier de cartes** — organiser les cartes en dossiers/catégories dans la bibliothèque (aujourd'hui : liste plate uniquement)
+- [ ] **Infos enrichies dans la liste des cartes** — 🟡 partiel : titre, vignette et icône météo déjà affichés ; manque l'état du fog, le type de média (image/animation/vidéo) et le nombre de tokens en un coup d'œil
+- [ ] **Versionning de carte** — historique/undo des modifications d'une carte (aujourd'hui : `fogProgressRevision`/`fogLiveRevision` ne sont que des cache-busters, pas un vrai historique)
 
 ---
 
