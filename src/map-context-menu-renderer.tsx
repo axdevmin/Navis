@@ -268,8 +268,8 @@ export const ContextMenuRenderer = (props: {
     >
       <MenuLoose defaultIsOpen={true} onClose={() => showContextMenu(null)}>
         <MenuListLoose
-          bg="#1a1a2e"
-          borderColor="#333366"
+          bg="#141416"
+          borderColor="rgba(255,255,255,0.1)"
           boxShadow="0 4px 20px rgba(0,0,0,0.6)"
           py="4px"
           minW="200px"
@@ -281,7 +281,7 @@ export const ContextMenuRenderer = (props: {
             const hasMultiSelection = selectedItems.size > 1 && selectedItems.has(state.target.id);
             return (
               <>
-                {mi(isVisible ? "#fbbf24" : "#86efac", "#2a2a4e", () => {
+                {mi(isVisible ? "#fbbf24" : "#86efac", "#1c1c1f", () => {
                   updateManyTokens({
                     variables: {
                       input: {
@@ -292,11 +292,11 @@ export const ContextMenuRenderer = (props: {
                     },
                   });
                 }, isVisible ? "👁 Masquer aux joueurs" : "👁 Afficher aux joueurs")}
-                {mi("#ddddff", "#2a2a4e",
+                {mi("#f2f2f2", "#1c1c1f",
                   () => toggleLabelVisibility(state.target!.id),
                   isLabelHidden ? "Afficher le texte" : "Masquer le texte"
                 )}
-                {mi("#ddddff", "#2a2a4e", togglePropertiesPanel,
+                {mi("#f2f2f2", "#1c1c1f", togglePropertiesPanel,
                   panelIsVisible ? "Masquer les propriétés" : "Afficher les propriétés"
                 )}
                 {map.combat?.isActive &&
@@ -305,12 +305,12 @@ export const ContextMenuRenderer = (props: {
                   mi("#86efac", "#1a2e1a", () => addTokenToCombat(token.id),
                     "⚔ Ajouter au combat"
                   )}
-                <MenuDividerLoose borderColor="#333366" my="2px" />
-                {mi("#ddddff", "#2a2a4e",
+                <MenuDividerLoose borderColor="rgba(255,255,255,0.1)" my="2px" />
+                {mi("#f2f2f2", "#1c1c1f",
                   () => duplicateToken(state.target!.id),
                   "Dupliquer"
                 )}
-                {hasMultiSelection && mi("#ddddff", "#2a2a4e", duplicateSelection,
+                {hasMultiSelection && mi("#f2f2f2", "#1c1c1f", duplicateSelection,
                   `Dupliquer la sélection (${selectedItems.size})`
                 )}
                 {hasMultiSelection && (
@@ -348,11 +348,11 @@ export const ContextMenuRenderer = (props: {
             );
           })() : selectedItems.size > 0 ? (
             <>
-              {mi("#ddddff", "#2a2a4e", togglePropertiesPanel,
+              {mi("#f2f2f2", "#1c1c1f", togglePropertiesPanel,
                 panelIsVisible ? "Masquer les propriétés" : "Afficher les propriétés"
               )}
-              <MenuDividerLoose borderColor="#333366" my="2px" />
-              {mi("#ddddff", "#2a2a4e", duplicateSelection,
+              <MenuDividerLoose borderColor="rgba(255,255,255,0.1)" my="2px" />
+              {mi("#f2f2f2", "#1c1c1f", duplicateSelection,
                 `Dupliquer la sélection (${selectedItems.size})`
               )}
               <MenuItemLoose

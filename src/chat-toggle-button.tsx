@@ -39,7 +39,7 @@ export const IconButton = styled.button<{
   &:hover {
     background: ${(p) =>
       p.colorVariant === "accent"
-        ? "rgba(96,165,250,0.2)"
+        ? "rgba(227, 181, 101,0.2)"
         : ds.colors.surfaceHover};
     border-color: ${(p) =>
       p.colorVariant === "accent" ? ds.colors.accent : ds.colors.borderStrong};
@@ -66,7 +66,7 @@ export const ButtonBadge = styled.span`
   border-radius: 50%;
   background: ${ds.colors.accent};
   border: 1.5px solid ${ds.colors.bg};
-  box-shadow: 0 0 6px rgba(96, 165, 250, 0.6);
+  box-shadow: 0 0 6px rgba(227, 181, 101, 0.6);
 `;
 
 export const ChatToggleButton: React.FC<{

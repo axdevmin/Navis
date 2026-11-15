@@ -14,7 +14,7 @@ import { useAccessToken } from "../../hooks/use-access-token";
 const Content = styled.div`
   width: 90vw;
   height: 90vh;
-  background-color: #0d0f14;
+  background-color: #0b0b0c;
   border-radius: 5px;
   display: flex;
   flex-direction: column;
@@ -34,7 +34,7 @@ const ListItem = styled.button<{ isActive: boolean }>`
   margin-bottom: 16px;
 
   background-color: ${(p) =>
-    p.isActive ? "rgba(96,165,250,0.12)" : "transparent"};
+    p.isActive ? "rgba(227, 181, 101,0.12)" : "transparent"};
   font-weight: ${(p) => (p.isActive ? "bold" : "inherit")};
 `;
 

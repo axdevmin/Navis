@@ -9,7 +9,7 @@ const darkTheme = extendTheme({
   config: { initialColorMode: "dark", useSystemColorMode: false },
   styles: {
     global: {
-      body: { bg: "#0d0f14", color: "#e8e6e1" },
+      body: { bg: "#0b0b0c", color: "#f2f2f2" },
     },
   },
 });
@@ -17,6 +17,7 @@ import { getUrlPrefix, buildUrl } from "./public-url";
 import { globalStyles } from "./global-styles";
 import { Modal } from "./modal";
 import * as UserStyleSheetOrchestrator from "./user-style-sheet-orchestrator";
+import "@fontsource-variable/inter/wght.css";
 import { registerSoundPlayback } from "./register-sound-playback";
 import { ErrorBoundary } from "./error-boundary";
 

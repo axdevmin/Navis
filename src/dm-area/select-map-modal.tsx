@@ -321,7 +321,7 @@ const ActiveMap = (props: {
             background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 8,
-            color: "#e8e6e1",
+            color: "#f2f2f2",
             fontFamily: "'Inter', system-ui, sans-serif",
             fontSize: 13,
             lineHeight: 1.5,
@@ -330,8 +330,8 @@ const ActiveMap = (props: {
             boxSizing: "border-box",
           }}
           onFocus={(e) => {
-            e.currentTarget.style.borderColor = "rgba(96,165,250,0.4)";
-            e.currentTarget.style.background = "rgba(96,165,250,0.06)";
+            e.currentTarget.style.borderColor = "rgba(227, 181, 101,0.4)";
+            e.currentTarget.style.background = "rgba(227, 181, 101,0.06)";
           }}
           onBlurCapture={(e) => {
             e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";

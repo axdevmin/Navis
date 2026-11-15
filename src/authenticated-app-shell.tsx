@@ -9,7 +9,7 @@ import { Chat } from "./chat";
 import { useChatSoundsAndUnreadCount } from "./chat/chat";
 import { useLogInMutation } from "./chat/log-in-mutation";
 import styled from "@emotion/styled/macro";
-import { NoteSearch } from "./note-search/note-search";
+import { openCommandPalette } from "./dm-area/command-palette";
 import {
   TokenInfoAside,
   NoteWindowContextProvider,
@@ -116,15 +116,13 @@ const AuthenticatedAppShellRenderer: React.FC<{ isMapOnly: boolean }> = ({
     logIn();
   }, [logIn]);
 
-  const [showSearch, setShowSearch] = React.useState(false);
-
   React.useEffect(() => {
     if (!isLoggedIn || !isDM) return;
 
     const listener = (ev: KeyboardEvent) => {
       if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && ev.keyCode === 70) {
         ev.preventDefault();
-        setShowSearch(true);
+        openCommandPalette();
       }
     };
 
@@ -175,9 +173,10 @@ const AuthenticatedAppShellRenderer: React.FC<{ isMapOnly: boolean }> = ({
                 <IconContainer>
                   {isDM ? (
                     <IconButton
-                      onClick={() => setShowSearch(true)}
+                      onClick={openCommandPalette}
                       style={{ pointerEvents: "all" }}
-                      title="Rechercher (Ctrl+Shift+F)"
+                      title="Chercher une action, une carte, une note"
+                      aria-label="Chercher une action, une carte, une note"
                     >
                       <Icon.Search boxSize="16px" />
                     </IconButton>
@@ -202,9 +201,6 @@ const AuthenticatedAppShellRenderer: React.FC<{ isMapOnly: boolean }> = ({
         {isMapOnly === false ? (
           <React.Fragment>
             <TokenInfoAside />
-            {isDM && showSearch ? (
-              <NoteSearch close={() => setShowSearch(false)} />
-            ) : null}
             {diceRollNotesState === "show" ? (
               <React.Suspense fallback={null}>
                 <DiceRollNotes close={toggleShowDiceRollNotes} />

@@ -59,7 +59,6 @@ import {
   ConfigureMapToolState,
 } from "../map-tools/configure-grid-map-tool";
 import { MapControlInterface } from "../map-view";
-import { ConditionalWrap } from "../util";
 import { BrushShape, FogMode } from "../canvas-draw-utilities";
 import {
   AreaSelectContext,
@@ -110,7 +109,22 @@ import { dmMap_mapUpdateGridMutation } from "./__generated__/dmMap_mapUpdateGrid
 import { dmMap_GridConfigurator_MapFragment$key } from "./__generated__/dmMap_GridConfigurator_MapFragment.graphql";
 import { dmMap_MapPingMutation } from "./__generated__/dmMap_MapPingMutation.graphql";
 import { dmMap_RollDiceMutation } from "./__generated__/dmMap_RollDiceMutation.graphql";
-import { WeatherControls } from "./weather-controls";
+import {
+  WeatherControls,
+  WEATHER_OPTIONS,
+  MapUpdateWeatherMutation,
+  getWeatherPatchForType,
+} from "./weather-controls";
+import { weatherControls_mapUpdateWeatherMutation } from "./__generated__/weatherControls_mapUpdateWeatherMutation.graphql";
+import {
+  CommandPalette,
+  PaletteCommand,
+  OPEN_COMMAND_PALETTE_EVENT,
+} from "./command-palette";
+import { Kbd, hasModKey, controlBase, floatingSurface } from "../ui";
+import type { WeatherType } from "../weather-types";
+import { ds } from "../design-system";
+import { APP_VERSION } from "../version";
 import { dmMap_WeatherButton_MapFragment$key } from "./__generated__/dmMap_WeatherButton_MapFragment.graphql";
 import { TokenLibrary } from "./token-library";
 import { ErrorBoundary } from "../error-boundary";
@@ -154,12 +168,12 @@ const BrushSettings = (): React.ReactElement => {
         options: [
           {
             value: BrushShape.square,
-            icon: <Icon.Square boxSize="20px" />,
+            icon: <Icon.Square boxSize="16px" />,
             label: "Carré",
           },
           {
             value: BrushShape.circle,
-            icon: <Icon.Circle boxSize="20px" />,
+            icon: <Icon.Circle boxSize="16px" />,
             label: "Cercle",
           },
         ],
@@ -240,7 +254,7 @@ const ShroudRevealSettings = (): React.ReactElement => {
             setState((state) => ({ ...state, fogMode: FogMode.clear }))
           }
         >
-          <Icon.Eye boxSize="20px" />
+          <Icon.Eye boxSize="16px" />
           <Icon.Label>Révéler</Icon.Label>
         </Toolbar.Button>
       </Toolbar.Item>
@@ -250,7 +264,7 @@ const ShroudRevealSettings = (): React.ReactElement => {
             setState((state) => ({ ...state, fogMode: FogMode.shroud }))
           }
         >
-          <Icon.EyeOff boxSize="20px" />
+          <Icon.EyeOff boxSize="16px" />
           <Icon.Label>Masquer</Icon.Label>
         </Toolbar.Button>
       </Toolbar.Item>
@@ -340,7 +354,9 @@ const ShowGridSettingsPopup = React.memo(
             alignItems="center"
             justifyContent="space-between"
           >
-            <FormLabelLoose htmlFor="show-grid-toggle">Afficher la grille</FormLabelLoose>
+            <FormLabelLoose htmlFor="show-grid-toggle">
+              Afficher la grille
+            </FormLabelLoose>
             <SwitchLoose
               id="show-grid-toggle"
               size="lg"
@@ -408,7 +424,7 @@ const GridSettingButton = (props: {
   const [dialogNode, showDialog] = useConfirmationDialog();
 
   return (
-    <Toolbar.Item isActive={map.grid != null} ref={ref}>
+    <Toolbar.Item isOpen={showMenu} ref={ref}>
       <Toolbar.Button
         onClick={() => {
           if (!map.grid) {
@@ -423,7 +439,7 @@ const GridSettingButton = (props: {
           }
         }}
       >
-        <Icon.Grid boxSize="20px" />
+        <Icon.Grid boxSize="16px" />
         <Icon.Label>Grille</Icon.Label>
       </Toolbar.Button>
       {showMenu && map.grid ? (
@@ -548,27 +564,32 @@ const TokenMarkerSettings = (): React.ReactElement => {
   );
 };
 
+/** Ancre un panneau flottant au-dessus d'un bouton du dock. */
+const DockPopover = styled.div`
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: -6px;
+  z-index: 100;
+  text-align: left;
+`;
+
 const TokenLibraryButton = (): React.ReactElement => {
   const [isOpen, setIsOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const ref = React.useRef<HTMLLIElement>(null);
   useOnClickOutside(ref, () => setIsOpen(false));
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <Toolbar.Item isActive>
-        <Toolbar.Button onClick={() => setIsOpen((v) => !v)}>
-          <span style={{ fontSize: "18px", lineHeight: 1 }}>🎭</span>
-          <Icon.Label>Tokens</Icon.Label>
-        </Toolbar.Button>
-      </Toolbar.Item>
+    <Toolbar.Item isOpen={isOpen} ref={ref}>
+      <Toolbar.Button onClick={() => setIsOpen((v) => !v)}>
+        <Icon.Users boxSize="16px" />
+        <Icon.Label>Tokens</Icon.Label>
+      </Toolbar.Button>
       {isOpen ? (
-        <div
-          style={{ position: "absolute", bottom: "100%", left: 0, zIndex: 10 }}
-        >
+        <DockPopover>
           <TokenLibrary />
-        </div>
+        </DockPopover>
       ) : null}
-    </div>
+    </Toolbar.Item>
   );
 };
 
@@ -586,37 +607,24 @@ const WeatherButton = (props: {
 }): React.ReactElement => {
   const map = useFragment(WeatherButtonMapFragment, props.map);
   const [isOpen, setIsOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const ref = React.useRef<HTMLLIElement>(null);
   useOnClickOutside(ref, () => setIsOpen(false));
 
-  const WEATHER_ICONS: Record<string, string> = {
-    none: "—",
-    sun: "☀️",
-    cloudy: "⛅",
-    rain: "🌧️",
-    storm: "⛈️",
-    snow: "❄️",
-    wind: "💨",
-    moon: "🌙",
-  };
-  const icon = WEATHER_ICONS[map.weatherSettings.type] ?? "—";
+  const weatherType = map.weatherSettings.type as WeatherType;
+  const WeatherIcon = WEATHER_ICONS[weatherType] ?? Icon.Cloud;
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <Toolbar.Item isActive>
-        <Toolbar.Button onClick={() => setIsOpen((v) => !v)}>
-          <span style={{ fontSize: "18px", lineHeight: 1 }}>{icon}</span>
-          <Icon.Label>Météo</Icon.Label>
-        </Toolbar.Button>
-      </Toolbar.Item>
-      {isOpen ? (
-        <div
-          style={{ position: "absolute", bottom: "100%", left: 0, zIndex: 10 }}
-        >
-          <WeatherControls map={map} />
-        </div>
-      ) : null}
-    </div>
+    <Toolbar.Item
+      isOpen={isOpen}
+      hasIndicator={weatherType !== "none"}
+      ref={ref}
+    >
+      <Toolbar.Button onClick={() => setIsOpen((v) => !v)}>
+        <WeatherIcon boxSize="16px" />
+        <Icon.Label>Météo</Icon.Label>
+      </Toolbar.Button>
+      {isOpen ? <WeatherControls map={map} /> : null}
+    </Toolbar.Item>
   );
 };
 
@@ -631,29 +639,35 @@ const CombatButtonMapFragment = graphql`
 
 const CombatButton = (props: {
   map: dmMap_CombatButton_MapFragment$key;
+  isSetupOpen: boolean;
+  setIsSetupOpen: (isOpen: boolean) => void;
 }): React.ReactElement => {
   const map = useFragment(CombatButtonMapFragment, props.map);
-  const [isSetupOpen, setIsSetupOpen] = React.useState(false);
   const isActive = map.combat.isActive;
 
   return (
     <>
-      <Toolbar.Item isActive={isActive}>
+      <Toolbar.Item hasIndicator={isActive} isOpen={props.isSetupOpen}>
         <Toolbar.Button
+          title={
+            isActive
+              ? "Combat en cours — gérez-le depuis le panneau Combat"
+              : "Préparer un combat"
+          }
           onClick={() => {
             if (!isActive) {
-              setIsSetupOpen(true);
+              props.setIsSetupOpen(true);
             }
           }}
         >
-          <span style={{ fontSize: "18px", lineHeight: 1 }}>⚔️</span>
+          <Icon.Swords boxSize="16px" />
           <Icon.Label>Combat</Icon.Label>
         </Toolbar.Button>
       </Toolbar.Item>
-      {isSetupOpen ? (
+      {props.isSetupOpen ? (
         <CombatSetupModal
           map={map}
-          onClose={() => setIsSetupOpen(false)}
+          onClose={() => props.setIsSetupOpen(false)}
         />
       ) : null}
     </>
@@ -678,69 +692,139 @@ const DICE_BUTTON_COLORS: Record<string, string> = {
   d100: "#6366f1",
 };
 
+const DiceGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 8px;
+`;
+
+const DieButton = styled.button<{ dieColor: string }>`
+  ${controlBase}
+  justify-content: center;
+  min-width: 62px;
+  color: ${ds.colors.textPrimary};
+  background: ${ds.colors.hover};
+  font-variant-numeric: tabular-nums;
+
+  /* la couleur rappelle celle du dé lancé sur la carte */
+  &::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    transform: rotate(45deg);
+    background: ${(p) => p.dieColor};
+  }
+
+  &:hover {
+    background: ${ds.colors.selected};
+  }
+`;
+
 const DiceButton = ({ mapId }: { mapId: string }): React.ReactElement => {
   const [isOpen, setIsOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const ref = React.useRef<HTMLLIElement>(null);
   useOnClickOutside(ref, () => setIsOpen(false));
   const [rollDice] = useMutation<dmMap_RollDiceMutation>(RollDiceMutation);
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <Toolbar.Item isActive>
-        <Toolbar.Button onClick={() => setIsOpen((v) => !v)}>
-          <Icon.Dice boxSize="20px" />
-          <Icon.Label>Dés</Icon.Label>
-        </Toolbar.Button>
-      </Toolbar.Item>
+    <Toolbar.Item isOpen={isOpen} ref={ref}>
+      <Toolbar.Button onClick={() => setIsOpen((v) => !v)}>
+        <Icon.Dice boxSize="16px" />
+        <Icon.Label>Dés</Icon.Label>
+      </Toolbar.Button>
       {isOpen ? (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "100%",
-            left: 0,
-            zIndex: 10,
-            background: "#1a202c",
-            border: "1px solid #2d3748",
-            borderRadius: "10px",
-            padding: "8px",
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "5px",
-            minWidth: "130px",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-          }}
-        >
-          {DICE_TYPES.map((diceType) => (
-            <button
-              key={diceType}
+        <Toolbar.Popup>
+          <PopupTitle>Lancer un dé, visible par les joueurs</PopupTitle>
+          <DiceGrid>
+            {DICE_TYPES.map((diceType) => (
+              <DieButton
+                key={diceType}
+                dieColor={DICE_BUTTON_COLORS[diceType]}
+                onClick={() => {
+                  rollDice({ variables: { input: { mapId, diceType } } });
+                  setIsOpen(false);
+                }}
+              >
+                {diceType.toUpperCase()}
+              </DieButton>
+            ))}
+          </DiceGrid>
+        </Toolbar.Popup>
+      ) : null}
+    </Toolbar.Item>
+  );
+};
+
+const PopupTitle = styled.div`
+  padding: 10px 12px 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: ${ds.colors.textMuted};
+  white-space: nowrap;
+`;
+
+const WEATHER_ICONS: Record<WeatherType, typeof Icon.Cloud> = {
+  none: Icon.Cloud,
+  sun: Icon.Sun,
+  cloudy: Icon.Cloud,
+  rain: Icon.CloudRain,
+  storm: Icon.CloudLightning,
+  snow: Icon.CloudSnow,
+  wind: Icon.Wind,
+  moon: Icon.Moon,
+};
+
+/**
+ * Menu « ⋯ » de la barre de session : actions rares (copie, déconnexion)
+ * volontairement éloignées du bouton Envoyer pour éviter les clics accidentels.
+ */
+const SessionMenu = (props: {
+  onCopy: null | (() => void);
+  onLogout: () => void;
+}): React.ReactElement => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  useOnClickOutside(ref, () => setIsOpen(false));
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "flex" }}>
+      <BarIconButton
+        onClick={() => setIsOpen((v) => !v)}
+        title="Plus d'actions"
+        aria-label="Plus d'actions"
+        aria-expanded={isOpen}
+      >
+        <Icon.MoreHorizontal boxSize="18px" />
+      </BarIconButton>
+      {isOpen ? (
+        <SessionMenuList role="menu">
+          {props.onCopy ? (
+            <SessionMenuItem
+              role="menuitem"
               onClick={() => {
-                rollDice({ variables: { input: { mapId, diceType } } });
                 setIsOpen(false);
+                props.onCopy?.();
               }}
-              style={{
-                background: DICE_BUTTON_COLORS[diceType],
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                padding: "7px 4px",
-                cursor: "pointer",
-                fontSize: "13px",
-                fontWeight: "bold",
-                letterSpacing: "0.5px",
-                transition: "filter 0.15s",
-              }}
-              onMouseEnter={(e) =>
-                ((e.target as HTMLButtonElement).style.filter =
-                  "brightness(1.2)")
-              }
-              onMouseLeave={(e) =>
-                ((e.target as HTMLButtonElement).style.filter = "none")
-              }
             >
-              {diceType.toUpperCase()}
-            </button>
-          ))}
-        </div>
+              <Icon.Clipboard boxSize="16px" />
+              Copier l'image de la carte
+            </SessionMenuItem>
+          ) : null}
+          <SessionMenuItem
+            role="menuitem"
+            danger
+            onClick={() => {
+              setIsOpen(false);
+              props.onLogout();
+            }}
+          >
+            <Icon.LogOut boxSize="16px" />
+            Se déconnecter
+          </SessionMenuItem>
+          <SessionMenuFooter>Navis v{APP_VERSION}</SessionMenuFooter>
+        </SessionMenuList>
       ) : null}
     </div>
   );
@@ -749,34 +833,38 @@ const DiceButton = ({ mapId }: { mapId: string }): React.ReactElement => {
 const dmNavigationTools: Array<ToolMapRecord> = [
   {
     name: "Déplacer",
-    icon: <Icon.Move boxSize="20px" />,
+    icon: <Icon.Move boxSize="16px" />,
     tool: DragPanZoomMapTool,
     MenuComponent: null,
   },
   {
     name: "Pinceau",
-    icon: <Icon.Pen boxSize="20px" />,
+    icon: <Icon.Pen boxSize="16px" />,
     tool: BrushMapTool,
     MenuComponent: BrushSettings,
   },
   {
     name: "Zone",
-    icon: <Icon.Crop boxSize="20px" />,
+    icon: <Icon.Crop boxSize="16px" />,
     tool: AreaSelectMapTool,
     MenuComponent: AreaSelectSettings,
   },
 ];
 
+// Outils pas encore prêts : conservés ici, mais plus affichés grisés dans
+// l'interface (ils n'apportaient que du bruit). Les remettre dans
+// dmNavigationTools quand ils seront finalisés.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const dmDisabledTools: Array<ToolMapRecord> = [
   {
     name: "Marquer",
-    icon: <Icon.Crosshair boxSize="20px" />,
+    icon: <Icon.Crosshair boxSize="16px" />,
     tool: MarkAreaMapTool,
     MenuComponent: null,
   },
   {
     name: "Jeton",
-    icon: <Icon.Target boxSize="20px" />,
+    icon: <Icon.Target boxSize="16px" />,
     tool: TokenMarkerMapTool,
     MenuComponent: TokenMarkerSettings,
   },
@@ -819,6 +907,7 @@ const MapPingMutation = graphql`
 const DMMapFragment = graphql`
   fragment dmMap_DMMapFragment on Map {
     id
+    title
     mediaType
     grid {
       offsetX
@@ -833,6 +922,14 @@ const DMMapFragment = graphql`
     ...dmMap_WeatherButton_MapFragment
     ...dmMap_CombatButton_MapFragment
     ...combatTracker_MapFragment
+    weatherSettings {
+      type
+      intensity
+      windAngle
+    }
+    combat {
+      isActive
+    }
   }
 `;
 
@@ -842,9 +939,10 @@ export const DmMap = (props: {
   liveMapId: string | null;
   hideMap: () => void;
   showMapModal: () => void;
+  loadMap: (mapId: string) => void;
   openNotes: () => void;
   openMediaLibrary: () => void;
-  sendLiveMap: (image: HTMLCanvasElement) => void;
+  sendLiveMap: (image: HTMLCanvasElement) => Promise<boolean>;
   saveFogProgress: (image: HTMLCanvasElement) => void;
   updateToken: (
     id: string,
@@ -863,9 +961,8 @@ export const DmMap = (props: {
   );
 
   const userSelectedTool = React.useMemo(() => {
-    const allTools = [...dmNavigationTools, ...dmDisabledTools];
     return (
-      allTools.find((tool) => tool.tool.id === activeToolId) ??
+      dmNavigationTools.find((tool) => tool.tool.id === activeToolId) ??
       dmNavigationTools[0]
     ).tool;
   }, [activeToolId]);
@@ -899,7 +996,7 @@ export const DmMap = (props: {
         ])
         .then(() => {
           showToast({
-            title: `Copied map image to clipboard.`,
+            title: "Image de la carte copiée dans le presse-papiers.",
             status: "success",
             duration: 3000,
             isClosable: true,
@@ -916,46 +1013,76 @@ export const DmMap = (props: {
     isConfiguringGridRef.current = isConfiguringGrid;
   });
 
+  const [isSending, setIsSending] = React.useState(false);
+  const sendToPlayers = async () => {
+    let canvas: HTMLCanvasElement;
+    if (map.mediaType === "video_url") {
+      // Cartes YouTube : pas de brouillard, on envoie un canvas vide
+      canvas = document.createElement("canvas");
+      canvas.width = 1;
+      canvas.height = 1;
+    } else {
+      const context = controlRef.current?.getContext();
+      if (!context) {
+        return;
+      }
+      canvas = context.fogCanvas;
+    }
+    setIsSending(true);
+    const isSuccess = await props.sendLiveMap(canvas);
+    setIsSending(false);
+    showToast({
+      title: isSuccess
+        ? "Carte envoyée aux joueurs"
+        : "L'envoi a échoué. Vérifiez la connexion puis réessayez.",
+      status: isSuccess ? "success" : "error",
+      duration: isSuccess ? 2000 : 5000,
+      isClosable: true,
+      position: "top",
+    });
+  };
+  // Le raccourci clavier doit toujours appeler la version courante
+  // (carte et mot de passe à jour), pas celle du premier rendu.
+  const sendToPlayersRef = React.useRef(sendToPlayers);
+  React.useEffect(() => {
+    sendToPlayersRef.current = sendToPlayers;
+  });
+
   React.useEffect(() => {
     const listener = (ev: KeyboardEvent) => {
       if (isConfiguringGridRef.current) {
         return;
       }
-      switch (ev.key) {
-        case "1":
-        case "2":
-        case "3":
-        case "4":
-        case "5": {
-          const toolIndex = parseInt(ev.key, 10) - 1;
-          setActiveToolId(
-            dmNavigationTools[toolIndex]?.tool.id ??
-              dmNavigationTools[0].tool.id
-          );
-          break;
-        }
-        case "s": {
-          /**
-           * overwrite CMD + S
-           * @source: https://michilehr.de/overwrite-cmds-and-ctrls-in-javascript/
-           */
-          if (
-            window.navigator.platform.match("Mac") ? ev.metaKey : ev.ctrlKey
-          ) {
-            ev.preventDefault();
-            if (map.mediaType === "video_url") {
-              const emptyCanvas = document.createElement("canvas");
-              emptyCanvas.width = 1;
-              emptyCanvas.height = 1;
-              props.sendLiveMap(emptyCanvas);
-            } else {
-              const context = controlRef.current?.getContext();
-              if (!context) return;
-              props.sendLiveMap(context.fogCanvas);
-            }
-          }
-          break;
-        }
+      const isSaveShortcut =
+        ev.key === "s" &&
+        (window.navigator.platform.match("Mac") ? ev.metaKey : ev.ctrlKey);
+      if (isSaveShortcut) {
+        ev.preventDefault();
+        sendToPlayersRef.current();
+        return;
+      }
+      if (hasModKey(ev) && ev.key.toLowerCase() === "k") {
+        ev.preventDefault();
+        setIsPaletteOpen((isOpen) => !isOpen);
+        return;
+      }
+      // Ne pas changer d'outil pendant la saisie dans un champ
+      const target = ev.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) {
+        return;
+      }
+      const toolIndex = ["1", "2", "3"].indexOf(ev.key);
+      if (toolIndex !== -1) {
+        setActiveToolId(dmNavigationTools[toolIndex].tool.id);
       }
     };
     window.document.addEventListener("keydown", listener);
@@ -963,7 +1090,198 @@ export const DmMap = (props: {
     return () => window.document.removeEventListener("keydown", listener);
   }, []);
 
+  const [isPaletteOpen, setIsPaletteOpen] = React.useState(false);
+  React.useEffect(() => {
+    const open = () => setIsPaletteOpen(true);
+    window.addEventListener(OPEN_COMMAND_PALETTE_EVENT, open);
+    return () => window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, open);
+  }, []);
+
+  const [isCombatSetupOpen, setIsCombatSetupOpen] = React.useState(false);
+  const [rollDice] = useMutation<dmMap_RollDiceMutation>(RollDiceMutation);
+  const [updateWeather] = useMutation<weatherControls_mapUpdateWeatherMutation>(
+    MapUpdateWeatherMutation
+  );
+
+  const fillFog = (mode: FogMode) => {
+    const context = controlRef.current?.getContext();
+    if (!context) {
+      return;
+    }
+    applyFogRectangle(
+      mode,
+      [0, 0],
+      [context.fogCanvas.width, context.fogCanvas.height],
+      context.fogCanvas.getContext("2d")!
+    );
+    context.fogTexture.needsUpdate = true;
+    props.saveFogProgress(context.fogCanvas);
+  };
+
   const [confirmDialogNode, showDialog] = useConfirmationDialog();
+
+  const askFillFog = (mode: FogMode) =>
+    mode === FogMode.shroud
+      ? showDialog({
+          header: "Tout masquer",
+          body: "Voulez-vous vraiment masquer toute la carte ?",
+          onConfirm: () => fillFog(FogMode.shroud),
+        })
+      : showDialog({
+          header: "Tout révéler",
+          body: "Voulez-vous vraiment révéler toute la carte ?",
+          onConfirm: () => fillFog(FogMode.clear),
+        });
+
+  // Tout ce que le MJ peut faire sans quitter le clavier (palette ⌘K).
+  const paletteCommands: Array<PaletteCommand> = [
+    {
+      id: "send",
+      title: "Envoyer la carte aux joueurs",
+      group: "Session",
+      icon: <Icon.Send boxSize="16px" />,
+      keywords: "diffuser partager live direct",
+      shortcut: ["mod", "S"],
+      run: sendToPlayers,
+    },
+    ...(isOtherMapLive
+      ? [
+          {
+            id: "stop",
+            title: "Arrêter la diffusion",
+            group: "Session",
+            icon: <Icon.Pause boxSize="16px" />,
+            keywords: "cacher masquer hors ligne",
+            run: props.hideMap,
+          },
+        ]
+      : []),
+    ...dmNavigationTools.map((record, index) => ({
+      id: `tool:${record.tool.id}`,
+      title: `Outil ${record.name}`,
+      group: "Outils",
+      icon: React.cloneElement(record.icon, { boxSize: "16px" }),
+      shortcut: [String(index + 1)],
+      run: () => setActiveToolId(record.tool.id),
+    })),
+    {
+      id: "fog:shroud",
+      title: "Masquer toute la carte",
+      group: "Brouillard",
+      icon: <Icon.Droplet fill="currentColor" boxSize="16px" />,
+      keywords: "brouillard tout",
+      run: () => askFillFog(FogMode.shroud),
+    },
+    {
+      id: "fog:clear",
+      title: "Révéler toute la carte",
+      group: "Brouillard",
+      icon: <Icon.Droplet boxSize="16px" />,
+      keywords: "brouillard tout",
+      run: () => askFillFog(FogMode.clear),
+    },
+    ...WEATHER_OPTIONS.filter(
+      (option) => option.type !== map.weatherSettings.type
+    ).map((option) => ({
+      id: `weather:${option.type}`,
+      title:
+        option.type === "none" ? "Couper la météo" : `Météo : ${option.label}`,
+      group: "Météo",
+      icon: <option.icon boxSize="16px" />,
+      keywords: "meteo temps climat",
+      run: () => {
+        const weather = map.weatherSettings;
+        const patch = getWeatherPatchForType(weather, option.type);
+        updateWeather({
+          variables: {
+            input: {
+              mapId: map.id,
+              weatherSettings: {
+                type: option.type,
+                intensity: weather.intensity,
+                windAngle: patch.windAngle ?? weather.windAngle,
+              },
+            },
+          },
+        });
+      },
+    })),
+    ...DICE_TYPES.map((diceType) => ({
+      id: `dice:${diceType}`,
+      title: `Lancer un ${diceType}`,
+      group: "Dés",
+      icon: <Icon.Dice boxSize="16px" />,
+      keywords: "de des jet roll",
+      run: () => {
+        rollDice({ variables: { input: { mapId: map.id, diceType } } });
+      },
+    })),
+    ...(map.combat.isActive
+      ? []
+      : [
+          {
+            id: "combat",
+            title: "Préparer un combat",
+            group: "Ouvrir",
+            icon: <Icon.Swords boxSize="16px" />,
+            keywords: "initiative bataille",
+            run: () => setIsCombatSetupOpen(true),
+          },
+        ]),
+    {
+      id: "maps",
+      title: "Cartes",
+      group: "Ouvrir",
+      icon: <Icon.Map boxSize="16px" />,
+      keywords: "changer carte bibliotheque plan",
+      run: props.showMapModal,
+    },
+    {
+      id: "library",
+      title: "Bibliothèque",
+      group: "Ouvrir",
+      icon: <Icon.BookOpen boxSize="16px" />,
+      keywords: "personnages medias images",
+      run: props.openMediaLibrary,
+    },
+    {
+      id: "notes",
+      title: "Notes",
+      group: "Ouvrir",
+      icon: <Icon.FileText boxSize="16px" />,
+      keywords: "editeur texte",
+      run: props.openNotes,
+    },
+    {
+      id: "grid",
+      title: "Configurer la grille",
+      group: "Ouvrir",
+      icon: <Icon.Grid boxSize="16px" />,
+      keywords: "quadrillage cases",
+      run: () => setToolOverride(ConfigureGridMapTool),
+    },
+    ...(asyncClipBoardApi
+      ? [
+          {
+            id: "copy",
+            title: "Copier l'image de la carte",
+            group: "Session",
+            icon: <Icon.Clipboard boxSize="16px" />,
+            keywords: "presse papiers capture",
+            run: copyMapToClipboard,
+          },
+        ]
+      : []),
+    {
+      id: "logout",
+      title: "Se déconnecter",
+      group: "Session",
+      icon: <Icon.LogOut boxSize="16px" />,
+      keywords: "quitter sortir",
+      danger: true,
+      run: props.onLogout,
+    },
+  ];
 
   const [configureGridMapToolState, setConfigureGridMapToolState] =
     useResetState<ConfigureMapToolState>(
@@ -1074,17 +1392,81 @@ export const DmMap = (props: {
 
       <CombatTracker map={map} isEditable={true} />
 
+      {isPaletteOpen ? (
+        <CommandPalette
+          commands={paletteCommands}
+          currentMapId={map.id}
+          onLoadMap={props.loadMap}
+          close={() => setIsPaletteOpen(false)}
+        />
+      ) : null}
+
       {toolOverride !== ConfigureGridMapTool ? (
         <>
+          <TopBarContainer>
+            <SessionBar>
+              <MapTitleButton
+                onClick={props.showMapModal}
+                title="Changer de carte"
+              >
+                <BrandMark>N</BrandMark>
+                <MapTitleText>{map.title}</MapTitleText>
+                <Icon.ChevronDown boxSize="14px" />
+              </MapTitleButton>
+              <BarDivider />
+              <LiveStatus
+                tone={
+                  isCurrentMapLive ? "live" : isOtherMapLive ? "other" : "off"
+                }
+                title={
+                  isCurrentMapLive
+                    ? "Les joueurs voient cette carte"
+                    : isOtherMapLive
+                    ? "Les joueurs voient une autre carte"
+                    : "Les joueurs ne voient aucune carte"
+                }
+              >
+                <LiveDot />
+                <span>
+                  {isCurrentMapLive
+                    ? "En direct"
+                    : isOtherMapLive
+                    ? "Autre carte en direct"
+                    : "Hors ligne"}
+                </span>
+              </LiveStatus>
+              {isOtherMapLive ? (
+                <BarButton
+                  onClick={props.hideMap}
+                  title="Ne plus afficher de carte aux joueurs"
+                >
+                  <Icon.Pause boxSize="16px" />
+                  <span>Arrêter</span>
+                </BarButton>
+              ) : null}
+              <SendButton
+                onClick={sendToPlayers}
+                disabled={isSending}
+                title="Envoyer la carte et le brouillard aux joueurs"
+              >
+                <Icon.Send boxSize="16px" />
+                <span>{isSending ? "Envoi…" : "Envoyer"}</span>
+                <Kbd keys={["mod", "S"]} onAccent />
+              </SendButton>
+              <SessionMenu
+                onCopy={asyncClipBoardApi ? copyMapToClipboard : null}
+                onLogout={props.onLogout}
+              />
+            </SessionBar>
+          </TopBarContainer>
           <LeftToolbarContainer>
             <Toolbar transparent>
-              <Toolbar.Logo />
-              <ToolbarSectionLabel>Vue</ToolbarSectionLabel>
               <Toolbar.Group divider>
-                {dmNavigationTools.map((record) => (
+                {dmNavigationTools.map((record, index) => (
                   <MenuItemRenderer
                     key={record.tool.id}
                     record={record}
+                    shortcut={String(index + 1)}
                     isActive={record.tool === userSelectedTool}
                     setActiveTool={() => {
                       setActiveToolId(record.tool.id);
@@ -1092,81 +1474,44 @@ export const DmMap = (props: {
                   />
                 ))}
               </Toolbar.Group>
-              <ToolbarSectionLabel>Brouillard</ToolbarSectionLabel>
-              <Toolbar.Group divider>
-                <ShroudRevealSettings />
-              </Toolbar.Group>
-              <Toolbar.Group divider>
-                <Toolbar.Item isActive>
-                  <Toolbar.Button
-                    onClick={() =>
-                      showDialog({
-                        header: "Tout masquer",
-                        body: "Voulez-vous vraiment masquer toute la carte ?",
-                        onConfirm: () => {
-                          const context = controlRef.current?.getContext();
-                          if (!context) {
-                            return;
-                          }
-                          const canvasContext =
-                            context.fogCanvas.getContext("2d")!;
-                          applyFogRectangle(
-                            FogMode.shroud,
-                            [0, 0],
-                            [context.fogCanvas.width, context.fogCanvas.height],
-                            canvasContext
-                          );
-                          context.fogTexture.needsUpdate = true;
-                          props.saveFogProgress(context.fogCanvas);
-                        },
-                      })
-                    }
-                  >
-                    <Icon.Droplet fill="currentColor" boxSize="20px" />
+              {userSelectedTool === BrushMapTool ||
+              userSelectedTool === AreaSelectMapTool ? (
+                // le mode du brouillard ne concerne que le pinceau et la zone
+                <Toolbar.Group divider>
+                  <ShroudRevealSettings />
+                </Toolbar.Group>
+              ) : null}
+              <Toolbar.Group>
+                <Toolbar.Item>
+                  <Toolbar.Button onClick={() => askFillFog(FogMode.shroud)}>
+                    <Icon.Droplet fill="currentColor" boxSize="16px" />
                     <Icon.Label>Tout masquer</Icon.Label>
                   </Toolbar.Button>
                 </Toolbar.Item>
-                <Toolbar.Item isActive>
-                  <Toolbar.Button
-                    onClick={() =>
-                      showDialog({
-                        header: "Tout révéler",
-                        body: "Voulez-vous vraiment révéler toute la carte ?",
-                        onConfirm: () => {
-                          const context = controlRef.current?.getContext();
-                          if (!context) {
-                            return;
-                          }
-                          const canvasContext =
-                            context.fogCanvas.getContext("2d")!;
-                          applyFogRectangle(
-                            FogMode.clear,
-                            [0, 0],
-                            [context.fogCanvas.width, context.fogCanvas.height],
-                            canvasContext
-                          );
-                          context.fogTexture.needsUpdate = true;
-                          props.saveFogProgress(context.fogCanvas);
-                        },
-                      })
-                    }
-                  >
-                    <Icon.Droplet boxSize="20px" />
+                <Toolbar.Item>
+                  <Toolbar.Button onClick={() => askFillFog(FogMode.clear)}>
+                    <Icon.Droplet boxSize="16px" />
                     <Icon.Label>Tout révéler</Icon.Label>
                   </Toolbar.Button>
                 </Toolbar.Item>
-              </Toolbar.Group>
-              <ToolbarSectionLabel>Bientôt</ToolbarSectionLabel>
-              <Toolbar.Group>
-                {dmDisabledTools.map((record) => (
-                  <DisabledToolItem key={record.tool.id} record={record} />
-                ))}
               </Toolbar.Group>
             </Toolbar>
           </LeftToolbarContainer>
           <BottomToolbarContainer>
             <Toolbar horizontal transparent>
-              <Toolbar.Group>
+              <Toolbar.Group divider>
+                <Toolbar.Item isOpen={isPaletteOpen}>
+                  <Toolbar.Button
+                    onClick={() => setIsPaletteOpen(true)}
+                    title="Chercher une action, une carte, une note"
+                  >
+                    <Icon.Search boxSize="16px" />
+                    <Icon.Label>Actions</Icon.Label>
+                    <Kbd keys={["mod", "K"]} />
+                  </Toolbar.Button>
+                </Toolbar.Item>
+              </Toolbar.Group>
+              <Toolbar.Group divider>
                 <GridSettingButton
                   map={map}
                   enterConfigureGridMode={() => {
@@ -1174,104 +1519,31 @@ export const DmMap = (props: {
                   }}
                 />
                 <WeatherButton map={map} />
-                <CombatButton map={map} />
+                <CombatButton
+                  map={map}
+                  isSetupOpen={isCombatSetupOpen}
+                  setIsSetupOpen={setIsCombatSetupOpen}
+                />
                 <DiceButton mapId={map.id} />
                 <TokenLibraryButton />
-                <Toolbar.Item isActive>
-                  <Toolbar.Button
-                    onClick={() => {
-                      props.showMapModal();
-                    }}
-                  >
-                    <Icon.Map boxSize="20px" />
+              </Toolbar.Group>
+              <Toolbar.Group>
+                <Toolbar.Item>
+                  <Toolbar.Button onClick={props.showMapModal}>
+                    <Icon.Map boxSize="16px" />
                     <Icon.Label>Cartes</Icon.Label>
                   </Toolbar.Button>
                 </Toolbar.Item>
-                <Toolbar.Item isActive>
-                  <Toolbar.Button
-                    onClick={() => {
-                      props.openMediaLibrary();
-                    }}
-                  >
-                    <Icon.BookOpen boxSize="20px" />
+                <Toolbar.Item>
+                  <Toolbar.Button onClick={props.openMediaLibrary}>
+                    <Icon.BookOpen boxSize="16px" />
                     <Icon.Label>Bibliothèque</Icon.Label>
                   </Toolbar.Button>
                 </Toolbar.Item>
-              </Toolbar.Group>
-            </Toolbar>
-            <MarginLeftDiv />
-            <Toolbar horizontal transparent>
-              <Toolbar.Group>
-                <Toolbar.Item isActive>
-                  <Toolbar.Button onClick={props.onLogout}>
-                    <Icon.LogOut boxSize="20px" />
-                    <Icon.Label>Déconnexion</Icon.Label>
-                  </Toolbar.Button>
-                </Toolbar.Item>
                 <Toolbar.Item>
-                  <ConditionalWrap
-                    condition={props.liveMapId !== null}
-                    wrap={(children) => (
-                      <Toolbar.Button onClick={props.hideMap}>
-                        {children}
-                      </Toolbar.Button>
-                    )}
-                  >
-                    <Icon.Pause
-                      stroke={props.liveMapId !== null ? "#f87171" : "#6b7280"}
-                      boxSize="20px"
-                    />
-                    <Icon.Label
-                      color={props.liveMapId !== null ? "#f87171" : "#6b7280"}
-                    >
-                      Arrêter
-                    </Icon.Label>
-                  </ConditionalWrap>
-                </Toolbar.Item>
-                {isCurrentMapLive ? (
-                  <Toolbar.Item>
-                    <Icon.Radio stroke="#4ade80" boxSize="20px" />
-                    <Icon.Label color="#4ade80">En direct</Icon.Label>
-                  </Toolbar.Item>
-                ) : isOtherMapLive ? (
-                  <Toolbar.Item>
-                    <Icon.Radio stroke="#fbbf24" boxSize="20px" />
-                    <Icon.Label color="#fbbf24">En direct</Icon.Label>
-                  </Toolbar.Item>
-                ) : (
-                  <Toolbar.Item>
-                    <Icon.Radio stroke="#6b7280" boxSize="20px" />
-                    <Icon.Label color="#6b7280">Hors ligne</Icon.Label>
-                  </Toolbar.Item>
-                )}
-                {asyncClipBoardApi ? (
-                  <Toolbar.Item isActive>
-                    <Toolbar.Button onClick={copyMapToClipboard}>
-                      <Icon.Clipboard boxSize="20px" />
-                      <Icon.Label>Copier</Icon.Label>
-                    </Toolbar.Button>
-                  </Toolbar.Item>
-                ) : null}
-                <Toolbar.Item isActive>
-                  <Toolbar.Button
-                    onClick={() => {
-                      if (map.mediaType === "video_url") {
-                        // YouTube maps: send an empty fog canvas
-                        const emptyCanvas = document.createElement("canvas");
-                        emptyCanvas.width = 1;
-                        emptyCanvas.height = 1;
-                        props.sendLiveMap(emptyCanvas);
-                        return;
-                      }
-                      const context = controlRef.current?.getContext();
-                      if (!context) {
-                        return;
-                      }
-                      props.sendLiveMap(context.fogCanvas);
-                    }}
-                  >
-                    <Icon.Send boxSize="20px" />
-                    <Icon.Label>Envoyer</Icon.Label>
+                  <Toolbar.Button onClick={props.openNotes}>
+                    <Icon.FileText boxSize="16px" />
+                    <Icon.Label>Notes</Icon.Label>
                   </Toolbar.Button>
                 </Toolbar.Item>
               </Toolbar.Group>
@@ -1296,83 +1568,202 @@ export const DmMap = (props: {
   );
 };
 
-const LeftToolbarContainer = styled.div`
-  display: flex;
-  align-items: center;
+const TopBarContainer = styled.div`
   position: absolute;
-  height: 100%;
-  top: 0;
-  left: 14px;
-  pointer-events: none;
-  @media (max-width: 580px) {
-    top: 1em;
-    align-items: start;
-  }
-`;
-
-const ToolbarSectionLabel = styled.div`
-  font-size: 6px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.18);
-  text-align: center;
-  padding: 4px 4px 0px;
-  user-select: none;
-  pointer-events: none;
-`;
-
-const DisabledToolbarItemStyled = styled.li`
-  position: relative;
-  padding-top: 10px;
+  top: 12px;
+  left: 12px;
+  /* laisse la place aux boutons recherche / chat en haut à droite */
+  right: 60px;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  opacity: 0.28;
-  cursor: default;
   pointer-events: none;
-  color: rgba(255, 255, 255, 0.3);
+`;
 
-  > button {
-    cursor: default;
-    pointer-events: none;
+const SessionBar = styled.div`
+  ${floatingSurface}
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 5px;
+`;
+
+const BrandMark = styled.span`
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: ${ds.colors.accent};
+  color: ${ds.colors.onAccent};
+  font-family: ${ds.font.brand};
+  font-size: 14px;
+  line-height: 1;
+  padding-top: 4px;
+`;
+
+const MapTitleButton = styled.button`
+  ${controlBase}
+  min-width: 0;
+  padding: 0 8px 0 5px;
+  color: ${ds.colors.textPrimary};
+  font-weight: 600;
+
+  > svg {
+    flex-shrink: 0;
+    color: ${ds.colors.textMuted};
+  }
+`;
+
+const MapTitleText = styled.span`
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+
+  @media (max-width: 720px) {
+    max-width: 88px;
+  }
+`;
+
+const BarDivider = styled.div`
+  flex-shrink: 0;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: ${ds.colors.border};
+`;
+
+const LiveDot = styled.span`
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+`;
+
+const LiveStatus = styled.div<{ tone: "live" | "other" | "off" }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 6px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: ${(p) =>
+    p.tone === "live"
+      ? ds.colors.success
+      : p.tone === "other"
+      ? ds.colors.warning
+      : ds.colors.textMuted};
+
+  /* le point porte la couleur, le texte reste lisible */
+  > span:last-of-type {
+    color: ${(p) =>
+      p.tone === "off" ? ds.colors.textMuted : ds.colors.textPrimary};
   }
 
-  svg {
-    stroke: rgba(255, 255, 255, 0.3) !important;
-    transition: none !important;
+  @media (max-width: 720px) {
+    padding: 0 4px;
+    > span:last-of-type {
+      display: none;
+    }
+  }
+`;
+
+const BarButton = styled.button`
+  ${controlBase}
+
+  @media (max-width: 720px) {
+    padding: 0 9px;
+    > span {
+      display: none;
+    }
+  }
+`;
+
+const SendButton = styled.button`
+  ${controlBase}
+  padding: 0 6px 0 10px;
+  background: ${ds.colors.accent};
+  color: ${ds.colors.onAccent};
+  font-weight: 600;
+
+  &:hover {
+    background: ${ds.colors.accentHover};
+    color: ${ds.colors.onAccent};
   }
 
-  &:hover,
-  &:hover svg,
-  &:hover button {
-    color: rgba(255, 255, 255, 0.3);
-    stroke: rgba(255, 255, 255, 0.3) !important;
-    transform: none !important;
+  &:disabled {
+    opacity: 0.6;
+    cursor: progress;
   }
+
+  @media (max-width: 720px) {
+    padding: 0 10px;
+    > span:last-of-type {
+      display: none;
+    }
+  }
+`;
+
+const BarIconButton = styled.button`
+  ${controlBase}
+  justify-content: center;
+  width: 32px;
+  padding: 0;
+`;
+
+const SessionMenuList = styled.div`
+  ${floatingSurface}
+  position: absolute;
+  top: calc(100% + 12px);
+  right: -5px;
+  min-width: 230px;
+  padding: 5px;
+  z-index: 100;
+`;
+
+const SessionMenuItem = styled.button<{ danger?: boolean }>`
+  ${controlBase}
+  width: 100%;
+  color: ${(p) => (p.danger ? ds.colors.danger : ds.colors.textPrimary)};
+
+  &:hover {
+    background: ${(p) => (p.danger ? ds.colors.dangerMuted : ds.colors.hover)};
+    color: ${(p) => (p.danger ? ds.colors.danger : ds.colors.textPrimary)};
+  }
+`;
+
+const SessionMenuFooter = styled.div`
+  margin-top: 5px;
+  padding: 8px 10px 4px;
+  border-top: 1px solid ${ds.colors.border};
+  font-size: 12px;
+  color: ${ds.colors.textMuted};
+  font-variant-numeric: tabular-nums;
+`;
+
+const LeftToolbarContainer = styled.div`
+  position: absolute;
+  top: 68px;
+  left: 12px;
+  pointer-events: none;
 `;
 
 const BottomToolbarContainer = styled.div`
   display: flex;
   justify-content: center;
-  align-items: center;
   width: 100%;
   position: absolute;
-  bottom: 16px;
+  bottom: 12px;
   pointer-events: none;
-  flex-wrap: wrap;
-  gap: 12px;
-`;
-
-const MarginLeftDiv = styled.div`
-  @media (max-width: 580px) {
-    display: none;
-  }
 `;
 
 const MenuItemRenderer = (props: {
   record: ToolMapRecord;
+  shortcut: string;
   setActiveTool: () => void;
   isActive: boolean;
 }): React.ReactElement => {
@@ -1391,7 +1782,10 @@ const MenuItemRenderer = (props: {
         }}
       >
         {props.record.icon}
-        <Icon.Label>{props.record.name} </Icon.Label>
+        <Icon.Label>
+          {props.record.name}
+          <Kbd keys={[props.shortcut]} />
+        </Icon.Label>
       </Toolbar.Button>
       {props.record.MenuComponent && props.isActive && showMenu ? (
         <Toolbar.Popup>
@@ -1399,19 +1793,6 @@ const MenuItemRenderer = (props: {
         </Toolbar.Popup>
       ) : null}
     </Toolbar.Item>
-  );
-};
-
-const DisabledToolItem = (props: {
-  record: ToolMapRecord;
-}): React.ReactElement => {
-  return (
-    <DisabledToolbarItemStyled title="Disponible prochainement">
-      <Toolbar.Button>
-        {props.record.icon}
-        <Icon.Label>{props.record.name}</Icon.Label>
-      </Toolbar.Button>
-    </DisabledToolbarItemStyled>
   );
 };
 
@@ -1445,8 +1826,8 @@ const GridConfigurator = (props: {
       maxWidth="480px"
       borderRadius="12px"
       padding="4"
-      backgroundColor="rgba(13,15,20,0.92)"
-      border="1px solid rgba(96,165,250,0.2)"
+      backgroundColor="rgba(11, 11, 12,0.92)"
+      border="1px solid rgba(227, 181, 101,0.2)"
       boxShadow="0 8px 32px rgba(0,0,0,0.6)"
       backdropFilter="blur(12px)"
       zIndex="1"
@@ -1481,9 +1862,9 @@ const GridConfigurator = (props: {
                 bg="rgba(255,255,255,0.07)"
                 border="1px solid rgba(255,255,255,0.15)"
                 color="white"
-                _hover={{ border: "1px solid rgba(96,165,250,0.4)" }}
+                _hover={{ border: "1px solid rgba(227, 181, 101,0.4)" }}
                 _focus={{
-                  border: "1px solid rgba(96,165,250,0.7)",
+                  border: "1px solid rgba(227, 181, 101,0.7)",
                   boxShadow: "none",
                 }}
               />
@@ -1522,9 +1903,9 @@ const GridConfigurator = (props: {
                 bg="rgba(255,255,255,0.07)"
                 border="1px solid rgba(255,255,255,0.15)"
                 color="white"
-                _hover={{ border: "1px solid rgba(96,165,250,0.4)" }}
+                _hover={{ border: "1px solid rgba(227, 181, 101,0.4)" }}
                 _focus={{
-                  border: "1px solid rgba(96,165,250,0.7)",
+                  border: "1px solid rgba(227, 181, 101,0.7)",
                   boxShadow: "none",
                 }}
               />
@@ -1565,9 +1946,9 @@ const GridConfigurator = (props: {
                 bg="rgba(255,255,255,0.07)"
                 border="1px solid rgba(255,255,255,0.15)"
                 color="white"
-                _hover={{ border: "1px solid rgba(96,165,250,0.4)" }}
+                _hover={{ border: "1px solid rgba(227, 181, 101,0.4)" }}
                 _focus={{
-                  border: "1px solid rgba(96,165,250,0.7)",
+                  border: "1px solid rgba(227, 181, 101,0.7)",
                   boxShadow: "none",
                 }}
               />
@@ -1606,9 +1987,9 @@ const GridConfigurator = (props: {
                 bg="rgba(255,255,255,0.07)"
                 border="1px solid rgba(255,255,255,0.15)"
                 color="white"
-                _hover={{ border: "1px solid rgba(96,165,250,0.4)" }}
+                _hover={{ border: "1px solid rgba(227, 181, 101,0.4)" }}
                 _focus={{
-                  border: "1px solid rgba(96,165,250,0.7)",
+                  border: "1px solid rgba(227, 181, 101,0.7)",
                   boxShadow: "none",
                 }}
               />
@@ -1637,7 +2018,7 @@ const GridConfigurator = (props: {
             onClick={props.onAbort}
             danger
           >
-            <Icon.X boxSize="20px" /> <span>Annuler</span>
+            <Icon.X boxSize="16px" /> <span>Annuler</span>
           </Button.Tertiary>
         </div>
         <div>
@@ -1664,7 +2045,7 @@ const GridConfigurator = (props: {
               });
             }}
           >
-            <span>Confirmer</span> <Icon.ChevronRight boxSize="20px" />
+            <span>Confirmer</span> <Icon.ChevronRight boxSize="16px" />
           </Button.Primary>
         </div>
       </div>

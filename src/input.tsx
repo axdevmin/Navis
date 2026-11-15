@@ -22,7 +22,7 @@ const InputInner = styled.input`
   &:hover {
     border-color: ${ds.colors.accentBorder};
     background: ${ds.colors.accentMuted};
-    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.1);
+    box-shadow: 0 0 0 2px rgba(227, 181, 101, 0.1);
   }
 `;
 

@@ -29,8 +29,8 @@ const InputField = styled.input`
 
   &:focus {
     border-color: ${ds.colors.accent};
-    background: rgba(96, 165, 250, 0.06);
-    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.12);
+    background: rgba(227, 181, 101, 0.06);
+    box-shadow: 0 0 0 3px rgba(227, 181, 101, 0.12);
   }
 `;
 
@@ -38,7 +38,7 @@ const SubmitButton = styled.button`
   width: 100%;
   height: 44px;
   background: ${ds.colors.accent};
-  color: #fff;
+  color: ${ds.colors.onAccent};
   border: none;
   border-radius: ${ds.radii.md};
   font-family: ${ds.font.sans};
@@ -47,13 +47,13 @@ const SubmitButton = styled.button`
   cursor: pointer;
   transition: all ${ds.transitions.fast};
   letter-spacing: 0.01em;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(96, 165, 250, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(227, 181, 101, 0.2);
 
   &:hover {
     background: ${ds.colors.accentHover};
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(96, 165, 250, 0.35),
-      0 0 0 1px rgba(96, 165, 250, 0.4);
+    box-shadow: 0 4px 12px rgba(227, 181, 101, 0.35),
+      0 0 0 1px rgba(227, 181, 101, 0.4);
   }
 
   &:active {
@@ -63,7 +63,7 @@ const SubmitButton = styled.button`
 
 const ErrorBox = styled.div`
   background: ${ds.colors.dangerMuted};
-  border: 1px solid rgba(220, 74, 74, 0.3);
+  border: 1px solid rgba(229, 72, 77, 0.3);
   border-radius: ${ds.radii.md};
   padding: 12px 16px;
   color: #f87171;

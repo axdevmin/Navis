@@ -42,14 +42,14 @@ const ButtonBase = styled.button<ButtonBaseProps>`
 
 export const Primary = styled(ButtonBase)`
   background: ${ds.colors.accent};
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(96, 165, 250, 0.3);
+  color: ${ds.colors.onAccent};
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(227, 181, 101, 0.3);
 
   &:focus,
   &:hover {
     background: ${ds.colors.accentHover};
-    box-shadow: 0 2px 8px rgba(96, 165, 250, 0.4),
-      0 0 0 1px rgba(96, 165, 250, 0.5);
+    box-shadow: 0 2px 8px rgba(227, 181, 101, 0.4),
+      0 0 0 1px rgba(227, 181, 101, 0.5);
     transform: translateY(-1px);
   }
 

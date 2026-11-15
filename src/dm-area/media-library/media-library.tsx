@@ -707,7 +707,7 @@ const Menu = styled.span`
 const Content = styled.div`
   width: 90vw;
   height: 90vh;
-  background-color: #0d0f14;
+  background-color: #0b0b0c;
   border-radius: 5px;
   display: flex;
   flex-direction: column;

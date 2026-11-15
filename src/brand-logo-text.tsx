@@ -8,7 +8,7 @@ const Heading = styled.div`
   margin-bottom: 48px;
   text-align: center;
   color: ${ds.colors.accent};
-  text-shadow: 0 0 40px rgba(96, 165, 250, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 0 40px rgba(227, 181, 101, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5);
   letter-spacing: 0.02em;
 `;
 

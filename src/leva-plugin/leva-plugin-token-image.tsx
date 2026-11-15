@@ -82,9 +82,9 @@ const TokenImageReference = () => {
                   <PortalLoose>
                     <PopoverContentLoose
                       width="400px"
-                      bg="#1a1b2e"
-                      borderColor="#333366"
-                      color="#e8e6e1"
+                      bg="#141416"
+                      borderColor="rgba(255,255,255,0.1)"
+                      color="#f2f2f2"
                     >
                       <TokenImagePopoverContent
                         onSelect={(value) => setValue(value)}

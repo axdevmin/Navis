@@ -382,7 +382,7 @@ const AddFormConfirmButton = styled.button`
   cursor: pointer;
 
   &:hover {
-    background: rgba(96, 165, 250, 0.2);
+    background: rgba(227, 181, 101, 0.2);
   }
 `;
 
@@ -562,7 +562,7 @@ const NextTurnButton = styled.button`
   font-family: ${ds.font.sans};
 
   &:hover {
-    background: rgba(96, 165, 250, 0.2);
+    background: rgba(227, 181, 101, 0.2);
   }
 `;
 

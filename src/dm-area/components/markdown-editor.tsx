@@ -466,7 +466,7 @@ const TextToolBar = styled.div`
 `;
 
 const ToolBarButton = styled.button`
-  border-color: #333366;
+  border-color: rgba(255,255,255,0.1);
   border-radius: 5px;
   padding: 8px;
   display: flex;
@@ -515,7 +515,7 @@ const DropDownMenuItem = styled.button`
   cursor: pointer;
   text-align: left;
   &:hover {
-    background-color: #2a2a4e;
+    background-color: #1c1c1f;
   }
 `;
 

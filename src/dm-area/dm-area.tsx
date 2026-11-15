@@ -196,28 +196,26 @@ const Content = ({
 
   const sendLiveMapTaskRef = React.useRef<null | ISendRequestTask>(null);
   const sendLiveMap = React.useCallback(
-    async (canvas: HTMLCanvasElement) => {
+    async (canvas: HTMLCanvasElement): Promise<boolean> => {
       const loadedMapId = dmAreaResponse.data?.map?.id;
 
       if (!loadedMapId) {
-        return;
+        return false;
       }
 
-      if (sendLiveMapTaskRef.current) {
-        sendLiveMapTaskRef.current.abort();
+      sendLiveMapTaskRef.current?.abort();
+      const blob = await new Promise<Blob | null>((res) => {
+        canvas.toBlob(res);
+      });
+      if (!blob) {
+        return false;
       }
-      const blob = await new Promise<Blob>((res) => {
-        canvas.toBlob((blob) => {
-          res(blob!);
-        });
-      });
-
-      const image = new File([blob], "fog.live.png", {
-        type: "image/png",
-      });
 
       const formData = new FormData();
-      formData.append("image", image);
+      formData.append(
+        "image",
+        new File([blob], "fog.live.png", { type: "image/png" })
+      );
 
       const task = sendRequest({
         url: buildApiUrl(`/map/${loadedMapId}/send`),
@@ -229,9 +227,7 @@ const Content = ({
       });
       sendLiveMapTaskRef.current = task;
       const result = await task.done;
-      if (result.type !== "success") {
-        return;
-      }
+      return result.type === "success";
     },
     [dmAreaResponse.data?.map?.id, dmPassword]
   );
@@ -245,22 +241,21 @@ const Content = ({
         return;
       }
 
-      if (sendLiveMapTaskRef.current) {
-        sendLiveMapTaskRef.current.abort();
-      }
-      const blob = await new Promise<Blob>((res) => {
-        canvas.toBlob((blob) => {
-          res(blob!);
-        });
+      // Seule la sauvegarde précédente du brouillard est annulée : annuler ici
+      // l'envoi aux joueurs (comme avant) faisait perdre un « Envoyer » si le
+      // MJ redessinait juste après.
+      sendProgressFogTaskRef.current?.abort();
+      const blob = await new Promise<Blob | null>((res) => {
+        canvas.toBlob(res);
       });
+      if (!blob) {
+        return;
+      }
 
       const formData = new FormData();
-
       formData.append(
         "image",
-        new File([blob], "fog.png", {
-          type: "image/png",
-        })
+        new File([blob], "fog.png", { type: "image/png" })
       );
 
       const task = sendRequest({
@@ -272,10 +267,7 @@ const Content = ({
         },
       });
       sendProgressFogTaskRef.current = task;
-      const result = await task.done;
-      if (result.type !== "success") {
-        return;
-      }
+      await task.done;
     },
     [dmAreaResponse.data?.map?.id, dmPassword]
   );
@@ -387,13 +379,16 @@ const Content = ({
               ev.preventDefault();
             }}
             onDragOver={(ev) => {
-              const isLibraryDrag = ev.dataTransfer.types.includes(
-                LIBRARY_DRAG_TYPE
-              );
+              const isLibraryDrag =
+                ev.dataTransfer.types.includes(LIBRARY_DRAG_TYPE);
               const isLibraryCharacterDrag = ev.dataTransfer.types.includes(
                 LIBRARY_CHARACTER_DRAG_TYPE
               );
-              if (!isFileDrag(ev) && !isLibraryDrag && !isLibraryCharacterDrag) {
+              if (
+                !isFileDrag(ev) &&
+                !isLibraryDrag &&
+                !isLibraryCharacterDrag
+              ) {
                 return;
               }
               ev.preventDefault();
@@ -568,7 +563,7 @@ const Content = ({
                     }
                   }}
                 >
-                  Import Map or Media Library Item
+                  Déposez le fichier ici pour l'importer (carte ou bibliothèque)
                 </DropZone>
               </CenterLoose>
             ) : null}
@@ -588,6 +583,7 @@ const Content = ({
                 saveFogProgress={saveFogProgress}
                 hideMap={hideMap}
                 showMapModal={showMapModal}
+                loadMap={setLoadedMapId}
                 openNotes={() => {
                   actions.showNoteInWindow(null, "note-editor", true);
                 }}
@@ -710,9 +706,12 @@ const DropZone = (props: DropZoneProps): React.ReactElement => {
   return (
     <BoxLoose
       padding="2"
-      background="rgba(13,15,20,0.85)"
+      marginTop="76px"
+      color="#f2f2f2"
+      fontSize="14px"
+      background="rgba(11, 11, 12,0.9)"
       borderRadius="10px"
-      outline="2px dashed rgba(96,165,250,0.5)"
+      outline="2px dashed rgba(227, 181, 101,0.5)"
       outlineOffset="-10px"
       onDragEnter={props.onDragEnter}
       onDragOver={props.onDragOver}

@@ -44,7 +44,7 @@ export type TokenPreset = {
 
 const LIBRARY: Array<{ category: string; tokens: TokenPreset[] }> = [
   {
-    category: "Personnages",
+    category: "Classes",
     tokens: [
       {
         label: "Guerrier",
@@ -236,8 +236,8 @@ const LIBRARY: Array<{ category: string; tokens: TokenPreset[] }> = [
 export const LIBRARY_DRAG_TYPE = "application/navis-token-preset";
 
 const PanelContainer = styled.div`
-  background: #1a1a2e;
-  border: 1px solid #333366;
+  background: #141416;
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: 8px;
   width: 280px;
   max-height: 480px;
@@ -253,10 +253,10 @@ const PanelHeader = styled.div`
   color: #aaaadd;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  border-bottom: 1px solid #2a2a4a;
+  border-bottom: 1px solid #1c1c1f;
   position: sticky;
   top: 0;
-  background: #1a1a2e;
+  background: #141416;
   z-index: 1;
 `;
 
@@ -287,7 +287,7 @@ const TokenButton = styled.button<{ typeColor: string }>`
   border-radius: 8px;
   cursor: grab;
   transition: background 0.15s, transform 0.1s;
-  color: #ddddff;
+  color: #f2f2f2;
   font-size: 10px;
   line-height: 1.2;
   text-align: center;
@@ -348,7 +348,7 @@ export const TokenLibrary = () => {
       <PanelHeader>Bibliothèque de tokens</PanelHeader>
       {data && data.libraryCharacters.length > 0 ? (
         <React.Fragment>
-          <CategoryTitle>Personnages</CategoryTitle>
+          <CategoryTitle>Mes personnages</CategoryTitle>
           <TokenGrid>
             {data.libraryCharacters.map((character) => {
               const faction = getFactionMeta(character.faction);

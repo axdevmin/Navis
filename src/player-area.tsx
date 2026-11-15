@@ -10,11 +10,7 @@ import { AuthenticationScreen } from "./authentication-screen";
 import { buildApiUrl } from "./public-url";
 import { AuthenticatedAppShell } from "./authenticated-app-shell";
 import { useSocket } from "./socket";
-import { animated, useSpring, to } from "react-spring";
 import { MapView, MapControlInterface } from "./map-view";
-import { useGesture } from "react-use-gesture";
-import { randomHash } from "./utilities/random-hash";
-import { useWindowDimensions } from "./hooks/use-window-dimensions";
 import { usePersistedState } from "./hooks/use-persisted-state";
 import { PlayerMapTool } from "./map-tools/player-map-tool";
 import {
@@ -48,15 +44,6 @@ const AbsoluteFullscreenContainer = styled.div`
   width: 100%;
   height: 100%;
 `;
-
-type MarkedArea = {
-  id: string;
-  x: number;
-  y: number;
-};
-
-const createCacheBusterString = () =>
-  encodeURIComponent(`${Date.now()}_${randomHash()}`);
 
 const PlayerMap_ActiveMapQuery = graphql`
   query playerArea_PlayerMap_ActiveMapQuery @live {
@@ -95,14 +82,13 @@ const PlayerMap = ({
 
   const randomBackground = useRandomBackground();
   const controlRef = React.useRef<MapControlInterface | null>(null);
-  const [markedAreas, setMarkedAreas] = React.useState<MarkedArea[]>(() => []);
 
   React.useEffect(() => {
     const contextmenuListener = (ev: Event) => {
       ev.preventDefault();
     };
+    window.addEventListener("contextmenu", contextmenuListener);
     return () => {
-      window.addEventListener("contextmenu", contextmenuListener);
       window.removeEventListener("contextmenu", contextmenuListener);
     };
   }, []);
@@ -138,66 +124,15 @@ const PlayerMap = ({
     [currentMap, fetch]
   );
 
-  const [toolbarPosition, setToolbarPosition] = useSpring(() => ({
-    position: [12, window.innerHeight - 50 - 12] as [number, number],
-    snapped: true,
-  }));
-
   const [showItems, setShowItems] = React.useState(true);
 
-  const isDraggingRef = React.useRef(false);
-
-  const windowDimensions = useWindowDimensions();
-
-  React.useEffect(() => {
-    const position = toolbarPosition.position.get();
-    const snapped = toolbarPosition.snapped.get();
-    const y = position[1] + 50 + 12;
-    if (y > windowDimensions.height || snapped) {
-      setToolbarPosition({
-        position: [position[0], windowDimensions.height - 50 - 12],
-        snapped: true,
-      });
-    }
-  }, [windowDimensions]);
-
-  const handler = useGesture(
-    {
-      onDrag: (state) => {
-        setToolbarPosition({
-          position: state.movement,
-          snapped: state.movement[1] === windowDimensions.height - 50 - 10,
-          immediate: true,
-        });
-      },
-      onClick: () => {
-        if (isDraggingRef.current) {
-          isDraggingRef.current = false;
-          return;
-        }
-        setShowItems((showItems) => !showItems);
-      },
-    },
-    {
-      drag: {
-        initial: () => toolbarPosition.position.get(),
-        bounds: {
-          left: 10,
-          right: windowDimensions.width - 70 - 10,
-          top: 10,
-          bottom: windowDimensions.height - 50 - 10,
-        },
-        threshold: 5,
-      },
-    }
-  );
   return (
     <>
       <div
         style={{
           background: currentMap.data?.activeMap
-            ? "#0d0f14"
-            : `url("${randomBackground}") center/cover no-repeat #0d0f14`,
+            ? "#0b0b0c"
+            : `url("${randomBackground}") center/cover no-repeat #0b0b0c`,
           height: "100vh",
         }}
       >
@@ -258,9 +193,14 @@ const PlayerMap = ({
       {!showSplashScreen ? (
         isMapOnly ? null : (
           <>
-            <ToolbarContainer style={{}}>
+            <ToolbarContainer>
               <Toolbar horizontal transparent>
-                <Toolbar.Logo {...handler()} cursor="grab">
+                <Toolbar.Logo
+                  cursor="pointer"
+                  role="button"
+                  title={showItems ? "Replier la barre" : "Déplier la barre"}
+                  onClick={() => setShowItems((showItems) => !showItems)}
+                >
                   {showItems ? (
                     <Icon.ChevronDown boxSize="18px" />
                   ) : (
@@ -269,7 +209,7 @@ const PlayerMap = ({
                 </Toolbar.Logo>
                 {showItems ? (
                   <Toolbar.Group>
-                    <Toolbar.Item isActive>
+                    <Toolbar.Item>
                       <Toolbar.Button
                         onClick={() => {
                           controlRef.current?.controls.center();
@@ -283,7 +223,7 @@ const PlayerMap = ({
                         <Icon.Label>Centrer</Icon.Label>
                       </Toolbar.Button>
                     </Toolbar.Item>
-                    <Toolbar.Item isActive>
+                    <Toolbar.Item>
                       <Toolbar.LongPressButton
                         onClick={() => {
                           controlRef.current?.controls.zoomIn();
@@ -299,7 +239,7 @@ const PlayerMap = ({
                         <Icon.Label>Zoom +</Icon.Label>
                       </Toolbar.LongPressButton>
                     </Toolbar.Item>
-                    <Toolbar.Item isActive>
+                    <Toolbar.Item>
                       <Toolbar.LongPressButton
                         onClick={() => {
                           controlRef.current?.controls.zoomOut();
@@ -312,10 +252,10 @@ const PlayerMap = ({
                         }}
                       >
                         <Icon.ZoomOut boxSize="20px" />
-                        <Icon.Label>Zoom -</Icon.Label>
+                        <Icon.Label>Zoom −</Icon.Label>
                       </Toolbar.LongPressButton>
                     </Toolbar.Item>
-                    <Toolbar.Item isActive>
+                    <Toolbar.Item>
                       <Toolbar.Button
                         onClick={() => {
                           window.location.href = "/mj";
@@ -325,7 +265,7 @@ const PlayerMap = ({
                         <Icon.Label>Mode MJ</Icon.Label>
                       </Toolbar.Button>
                     </Toolbar.Item>
-                    <Toolbar.Item isActive>
+                    <Toolbar.Item>
                       <Toolbar.Button onClick={onLogout}>
                         <Icon.LogOut boxSize="20px" />
                         <Icon.Label>Quitter</Icon.Label>

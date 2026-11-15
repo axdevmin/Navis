@@ -1,11 +1,9 @@
 import { css } from "@emotion/react";
 import { buildUrl } from "./public-url";
-import { cssVars } from "./design-system";
+import { cssVars, ds } from "./design-system";
 
 export const globalStyles = css`
   ${cssVars}
-
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
   @font-face {
     font-family: "folkard";
@@ -30,12 +28,11 @@ export const globalStyles = css`
     width: 100%;
     height: 100%;
     margin: 0px;
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      Helvetica, Arial, sans-serif;
+    font-family: ${ds.font.sans};
     font-size: 16px;
     overflow: hidden;
-    background-color: #0d0f14;
-    color: #e8e6e1;
+    background-color: #0b0b0c;
+    color: #f2f2f2;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -58,7 +55,7 @@ export const globalStyles = css`
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #0d0f14;
+    background-color: #0b0b0c;
   }
 
   /* Scrollbars fines et discrètes */
@@ -101,11 +98,11 @@ export const globalStyles = css`
     height: 14px;
     width: 14px;
     border-radius: 50%;
-    background: #60a5fa;
+    background: #e3b565;
     cursor: pointer;
     -webkit-appearance: none;
     margin-top: -5.5px;
-    box-shadow: 0 0 6px rgba(96, 165, 250, 0.5);
+    box-shadow: 0 0 6px rgba(227, 181, 101, 0.5);
     transition: transform 0.15s ease;
   }
 
@@ -119,6 +116,22 @@ export const globalStyles = css`
 
   .no-focus-outline *:focus {
     outline: none !important;
+  }
+
+  /* Navigation clavier : anneau de focus visible et cohérent */
+  body:not(.no-focus-outline) *:focus-visible {
+    outline: 2px solid ${ds.colors.accent} !important;
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 
   .react-colorful__pointer {
@@ -136,14 +149,14 @@ export const globalStyles = css`
   .chakra-select {
     background-color: rgba(255, 255, 255, 0.05) !important;
     border-color: rgba(255, 255, 255, 0.1) !important;
-    color: #e8e6e1 !important;
-    font-family: "Inter", sans-serif !important;
+    color: #f2f2f2 !important;
+    font-family: ${ds.font.sans} !important;
   }
 
   .chakra-input:focus,
   .chakra-textarea:focus {
-    border-color: rgba(96, 165, 250, 0.5) !important;
-    box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.3) !important;
+    border-color: rgba(227, 181, 101, 0.5) !important;
+    box-shadow: 0 0 0 1px rgba(227, 181, 101, 0.3) !important;
   }
 
   .chakra-input::placeholder,
@@ -152,11 +165,11 @@ export const globalStyles = css`
   }
 
   .chakra-switch__track[data-checked] {
-    background: #60a5fa !important;
+    background: #e3b565 !important;
   }
 
   .chakra-form__label {
-    color: #9ca3af !important;
+    color: #a0a0a5 !important;
     font-size: 12px !important;
     font-weight: 500 !important;
     text-transform: uppercase !important;
@@ -165,9 +178,9 @@ export const globalStyles = css`
 
   /* Chakra UI Menu dark theme overrides */
   .chakra-menu__menulist {
-    background-color: #1a1a2e !important;
-    border: 1px solid #333366 !important;
-    border-radius: 6px !important;
+    background-color: #141416 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 10px !important;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6) !important;
     padding: 4px !important;
     min-width: 160px !important;
@@ -175,7 +188,7 @@ export const globalStyles = css`
 
   .chakra-menu__menuitem {
     background-color: transparent !important;
-    color: #ddddff !important;
+    color: #f2f2f2 !important;
     border-radius: 4px !important;
     font-size: 13px !important;
     padding: 7px 12px !important;
@@ -184,7 +197,7 @@ export const globalStyles = css`
 
   .chakra-menu__menuitem:hover,
   .chakra-menu__menuitem:focus {
-    background-color: #2a2a4e !important;
+    background-color: #1c1c1f !important;
     color: #ffffff !important;
   }
 
@@ -196,63 +209,63 @@ export const globalStyles = css`
 
   /* Chakra UI Popover dark theme */
   .chakra-popover__content {
-    background-color: #1a1b2e !important;
-    border: 1px solid #333366 !important;
+    background-color: #141416 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7) !important;
-    color: #e8e6e1 !important;
+    color: #f2f2f2 !important;
   }
 
   .chakra-popover__header {
-    background-color: #141524 !important;
-    border-bottom-color: #333366 !important;
-    color: #e8e6e1 !important;
+    background-color: #101012 !important;
+    border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+    color: #f2f2f2 !important;
     font-size: 13px !important;
     font-weight: 600 !important;
   }
 
   .chakra-popover__body {
-    background-color: #1a1b2e !important;
-    color: #e8e6e1 !important;
+    background-color: #141416 !important;
+    color: #f2f2f2 !important;
   }
 
   .chakra-popover__footer {
-    background-color: #141524 !important;
-    border-top-color: #333366 !important;
+    background-color: #101012 !important;
+    border-top-color: rgba(255, 255, 255, 0.1) !important;
   }
 
   .chakra-popover__close-btn {
-    color: #9ca3af !important;
+    color: #a0a0a5 !important;
   }
 
   .chakra-popover__close-btn:hover {
-    background-color: #2a2a4e !important;
+    background-color: #1c1c1f !important;
     color: #ffffff !important;
   }
 
   /* Chakra UI Modal / Dialog dark theme */
   .chakra-modal__content,
   .chakra-modal__content-container {
-    background-color: #1a1b2e !important;
-    border: 1px solid #333366 !important;
+    background-color: #141416 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.8) !important;
-    color: #e8e6e1 !important;
+    color: #f2f2f2 !important;
   }
 
   .chakra-modal__header {
-    background-color: #141524 !important;
-    color: #e8e6e1 !important;
-    border-bottom: 1px solid #333366 !important;
+    background-color: #101012 !important;
+    color: #f2f2f2 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
     font-size: 14px !important;
   }
 
   .chakra-modal__body {
-    background-color: #1a1b2e !important;
-    color: #e8e6e1 !important;
+    background-color: #141416 !important;
+    color: #f2f2f2 !important;
   }
 
   .chakra-modal__footer {
-    background-color: #141524 !important;
-    border-top: 1px solid #333366 !important;
+    background-color: #101012 !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
   }
 
   .chakra-modal__overlay {
@@ -260,11 +273,11 @@ export const globalStyles = css`
   }
 
   .chakra-modal__close-btn {
-    color: #9ca3af !important;
+    color: #a0a0a5 !important;
   }
 
   .chakra-modal__close-btn:hover {
-    background-color: #2a2a4e !important;
+    background-color: #1c1c1f !important;
     color: #ffffff !important;
   }
 
@@ -274,12 +287,12 @@ export const globalStyles = css`
   }
 
   .chakra-slider__filled-track {
-    background-color: #60a5fa !important;
+    background-color: #e3b565 !important;
   }
 
   .chakra-slider__thumb {
-    background-color: #60a5fa !important;
-    border-color: #60a5fa !important;
+    background-color: #e3b565 !important;
+    border-color: #e3b565 !important;
   }
 
   /* Chakra Button secondary dark theme */
@@ -289,14 +302,14 @@ export const globalStyles = css`
 
   /* Chakra Text/Heading dark */
   .chakra-heading {
-    color: #e8e6e1 !important;
+    color: #f2f2f2 !important;
   }
 
   /* Tooltip */
   .chakra-tooltip {
-    background-color: #2a2a4e !important;
-    color: #e8e6e1 !important;
-    border: 1px solid #333366 !important;
+    background-color: #1c1c1f !important;
+    color: #f2f2f2 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
     font-size: 12px !important;
   }
 `;
