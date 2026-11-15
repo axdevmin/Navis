@@ -73,8 +73,8 @@ import { mapView_MapPingSubscription } from "./__generated__/mapView_MapPingSubs
 import { UpdateTokenContext } from "./update-token-context";
 import { IsDungeonMasterContext } from "./is-dungeon-master-context";
 import { WeatherSystem } from "./weather-system";
+import { RenderDemand, RenderScheduler } from "./render-scheduler";
 import type { WeatherSettings } from "./weather-types";
-import { APP_VERSION } from "./version";
 import { DiceRollRenderer } from "./dice-roll-renderer";
 
 type Vector2D = [number, number];
@@ -2177,21 +2177,6 @@ const MapCanvasContainer = styled.div`
   touch-action: manipulation;
 `;
 
-const VersionBadge = styled.div`
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 100;
-  background: rgba(0, 0, 0, 0.55);
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 10px;
-  font-family: monospace;
-  padding: 2px 6px;
-  border-radius: 3px;
-  pointer-events: none;
-  user-select: none;
-`;
-
 const YouTubeIframe = styled.iframe`
   position: absolute;
   top: 0;
@@ -2404,8 +2389,22 @@ export const MapView = (props: {
     ? toYouTubeEmbedUrl(map.mapImageUrl)
     : null;
 
+  // Ce que la scène exige quand personne n'y touche (voir RenderScheduler).
+  const weatherType =
+    (map.weatherSettings as WeatherSettings | null)?.type ?? "none";
+  const renderDemand: RenderDemand =
+    weatherType !== "none" || (isAnimatedMedia && isAnimating)
+      ? "continuous"
+      : isDungeonMaster
+      ? // le brouillard du MJ est statique : rien à redessiner au repos
+        "idle"
+      : // le brouillard des joueurs dérive lentement : 30 images/s suffisent
+        "slow";
+
   const canvasContent = (
     <Canvas
+      // Rendu à la demande : c'est RenderScheduler qui décide quand dessiner.
+      invalidateFrameloop
       camera={{ position: [0, 0, 5] }}
       // Capped so a high density screen, or a TV box reporting a ratio above 1,
       // does not multiply the number of pixels to shade every frame.
@@ -2447,6 +2446,7 @@ export const MapView = (props: {
       }}
     >
       <ambientLight intensity={1} />
+      <RenderScheduler demand={renderDemand} />
       <ContextBridge>
         <MapViewRenderer
           key={map.id}
@@ -2503,7 +2503,6 @@ export const MapView = (props: {
 
   return mapImage || mapVideo ? (
     <MapCanvasContainer>
-      {isDungeonMaster ? <VersionBadge>v{APP_VERSION}</VersionBadge> : null}
       {canvasContent}
       {isAnimatedMedia && (
         <AnimationToggleButton
