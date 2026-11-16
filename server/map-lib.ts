@@ -10,6 +10,7 @@ import type {
   Maps,
   TokenType,
   WeatherSettings,
+  MapRoom,
 } from "./maps";
 import * as auth from "./auth";
 import type { Settings } from "./settings";
@@ -409,6 +410,33 @@ export const setActiveMap = (params: { activeMapId: string }) =>
     RT.map(() => true)
   );
 
+export type MapUpdateRoomsResult = {
+  updatedMap: MapEntity;
+};
+
+/** Remplace la liste des pièces tracées sur une carte. */
+export const mapUpdateRooms = (params: {
+  mapId: string;
+  rooms: Array<MapRoom>;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain(
+      (deps) => () => () =>
+        deps.maps.updateMapSettings(params.mapId, {
+          rooms: params.rooms,
+        })
+    ),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): MapUpdateRoomsResult => ({ updatedMap }))
+  );
+
 export type MapUpdateWeatherResult = {
   updatedMap: MapEntity;
 };
@@ -549,9 +577,7 @@ export const combatPreviousTurn = (params: { mapId: string }) =>
   pipe(
     auth.requireAdmin(),
     RT.chainW(() => RT.ask<MapsDependency>()),
-    RT.chain(
-      (deps) => () => () => deps.maps.combatPreviousTurn(params.mapId)
-    ),
+    RT.chain((deps) => () => () => deps.maps.combatPreviousTurn(params.mapId)),
     RT.chainW((map) =>
       pipe(
         invalidateResourcesRT([`Map:${map.id}`]),

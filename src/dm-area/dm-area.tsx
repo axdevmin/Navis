@@ -89,6 +89,7 @@ type Mode =
     }
   | {
       title: "MEDIA_LIBRARY";
+      tab: "characters" | "images";
     };
 
 const createInitialMode = (): Mode => ({
@@ -332,9 +333,16 @@ const Content = ({
           // thanks relay :D
           // so we wanna show the map library if the data is loaded aka data is not undefined but data.map is undefined :D
           dmAreaResponse.data &&
-          !dmAreaResponse.data.map) ||
+          !dmAreaResponse.data.map &&
+          // l'onglet personnages / images peut s'ouvrir sans carte chargée
+          mode.title !== "MEDIA_LIBRARY") ||
         mode.title === "SHOW_MAP_LIBRARY" ? (
           <SelectMapModal
+            onSelectTab={(tab) => {
+              if (tab !== "maps") {
+                setMode({ title: "MEDIA_LIBRARY", tab });
+              }
+            }}
             canClose={dmAreaResponse.data?.map !== null}
             loadedMapId={loadedMapId}
             liveMapId={dmAreaResponse.data?.map?.id ?? null}
@@ -357,6 +365,20 @@ const Content = ({
         ) : null}
         {mode.title === "MEDIA_LIBRARY" ? (
           <MediaLibrary
+            // la clé rouvre la fenêtre sur le bon onglet
+            key={mode.tab}
+            initialTab={mode.tab}
+            onSelectMaps={() => setMode({ title: "SHOW_MAP_LIBRARY" })}
+            getDropPoint={() => {
+              // au centre de ce que le MJ regarde, pas dans un coin de l'image
+              const context = controlRef.current?.getContext();
+              if (!context) return [0, 0];
+              const [x, y] = context.helper.coordinates.screenToImage([
+                window.innerWidth / 2,
+                window.innerHeight / 2,
+              ]);
+              return [Math.round(x), Math.round(y)];
+            }}
             mapId={dmAreaResponse.data?.map?.id ?? null}
             onClose={() => {
               setMode({ title: "EDIT_MAP" });
@@ -591,8 +613,8 @@ const Content = ({
                 openNotes={() => {
                   actions.showNoteInWindow(null, "note-editor", true);
                 }}
-                openMediaLibrary={() => {
-                  setMode({ title: "MEDIA_LIBRARY" });
+                openMediaLibrary={(tab) => {
+                  setMode({ title: "MEDIA_LIBRARY", tab });
                 }}
                 updateToken={updateToken}
                 onLogout={onLogout}

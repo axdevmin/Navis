@@ -1,4 +1,5 @@
 import * as React from "react";
+import { undoHistory } from "./undo-history";
 import graphql from "babel-plugin-relay/macro";
 import { useFragment, useMutation } from "relay-hooks";
 import { Box, Menu, MenuItem, MenuDivider, MenuList } from "@chakra-ui/react";
@@ -159,6 +160,47 @@ export const ContextMenuRenderer = (props: {
       MapContextMenuRendererCombatAddParticipantMutation
     );
 
+  /** Supprime des tokens en gardant de quoi les recréer (annulation). */
+  const deleteTokens = (tokenIds: Array<string>) => {
+    const removed = map.tokens.filter((token) => tokenIds.includes(token.id));
+    mapTokenDeleteMany({
+      variables: { input: { mapId: map.id, tokenIds } },
+    });
+    if (removed.length === 0) return;
+    undoHistory.push({
+      label:
+        removed.length === 1
+          ? "Suppression du token"
+          : `Suppression de ${removed.length} tokens`,
+      // Les tokens recréés ont de nouveaux identifiants : cette action ne
+      // peut donc pas être rétablie ensuite.
+      undo: () => {
+        mapTokenAddMany({
+          variables: {
+            input: {
+              mapId: map.id,
+              tokens: removed.map((token) => ({
+                x: token.x,
+                y: token.y,
+                color: token.color,
+                label: token.label,
+                radius: token.radius,
+                rotation: token.rotation,
+                isVisibleForPlayers: token.isVisibleForPlayers,
+                isMovableByPlayers: token.isMovableByPlayers,
+                isLocked: token.isLocked,
+                tokenType: token.tokenType as any,
+                isAlive: token.isAlive,
+                imageUrl: token.imageUrl ?? undefined,
+                tokenImageId: token.tokenImage?.id ?? undefined,
+              })),
+            },
+          },
+        });
+      },
+    });
+  };
+
   if (state === null) return null;
 
   // Panel is only visible when a token is selected AND not hidden
@@ -274,85 +316,112 @@ export const ContextMenuRenderer = (props: {
           py="4px"
           minW="200px"
         >
-          {state.target?.type === "token" ? (() => {
-            const token = map.tokens.find((t) => t.id === state.target?.id);
-            const isVisible = token?.isVisibleForPlayers ?? false;
-            const isLabelHidden = hiddenLabelTokenIds.has(state.target.id);
-            const hasMultiSelection = selectedItems.size > 1 && selectedItems.has(state.target.id);
-            return (
-              <>
-                {mi(isVisible ? "#fbbf24" : "#86efac", "#1c1c1f", () => {
-                  updateManyTokens({
-                    variables: {
-                      input: {
-                        mapId: map.id,
-                        tokenIds: [state.target!.id],
-                        properties: { isVisibleForPlayers: !isVisible },
-                      },
+          {state.target?.type === "token" ? (
+            (() => {
+              const token = map.tokens.find((t) => t.id === state.target?.id);
+              const isVisible = token?.isVisibleForPlayers ?? false;
+              const isLabelHidden = hiddenLabelTokenIds.has(state.target.id);
+              const hasMultiSelection =
+                selectedItems.size > 1 && selectedItems.has(state.target.id);
+              return (
+                <>
+                  {mi(
+                    isVisible ? "#fbbf24" : "#86efac",
+                    "#1c1c1f",
+                    () => {
+                      updateManyTokens({
+                        variables: {
+                          input: {
+                            mapId: map.id,
+                            tokenIds: [state.target!.id],
+                            properties: { isVisibleForPlayers: !isVisible },
+                          },
+                        },
+                      });
                     },
-                  });
-                }, isVisible ? "Masquer aux joueurs" : "Afficher aux joueurs")}
-                {mi("#f2f2f2", "#1c1c1f",
-                  () => toggleLabelVisibility(state.target!.id),
-                  isLabelHidden ? "Afficher le texte" : "Masquer le texte"
-                )}
-                {mi("#f2f2f2", "#1c1c1f", togglePropertiesPanel,
-                  panelIsVisible ? "Masquer les propriétés" : "Afficher les propriétés"
-                )}
-                {map.combat?.isActive &&
-                  token &&
-                  !combatTokenIds.has(token.id) &&
-                  mi("#86efac", "#1a2e1a", () => addTokenToCombat(token.id),
-                    "Ajouter au combat"
+                    isVisible ? "Masquer aux joueurs" : "Afficher aux joueurs"
                   )}
-                <MenuDividerLoose borderColor="rgba(255,255,255,0.1)" my="2px" />
-                {mi("#f2f2f2", "#1c1c1f",
-                  () => duplicateToken(state.target!.id),
-                  "Dupliquer"
-                )}
-                {hasMultiSelection && mi("#f2f2f2", "#1c1c1f", duplicateSelection,
-                  `Dupliquer la sélection (${selectedItems.size})`
-                )}
-                {hasMultiSelection && (
+                  {mi(
+                    "#f2f2f2",
+                    "#1c1c1f",
+                    () => toggleLabelVisibility(state.target!.id),
+                    isLabelHidden ? "Afficher le texte" : "Masquer le texte"
+                  )}
+                  {mi(
+                    "#f2f2f2",
+                    "#1c1c1f",
+                    togglePropertiesPanel,
+                    panelIsVisible
+                      ? "Masquer les propriétés"
+                      : "Afficher les propriétés"
+                  )}
+                  {map.combat?.isActive &&
+                    token &&
+                    !combatTokenIds.has(token.id) &&
+                    mi(
+                      "#86efac",
+                      "#1a2e1a",
+                      () => addTokenToCombat(token.id),
+                      "Ajouter au combat"
+                    )}
+                  <MenuDividerLoose
+                    borderColor="rgba(255,255,255,0.1)"
+                    my="2px"
+                  />
+                  {mi(
+                    "#f2f2f2",
+                    "#1c1c1f",
+                    () => duplicateToken(state.target!.id),
+                    "Dupliquer"
+                  )}
+                  {hasMultiSelection &&
+                    mi(
+                      "#f2f2f2",
+                      "#1c1c1f",
+                      duplicateSelection,
+                      `Dupliquer la sélection (${selectedItems.size})`
+                    )}
+                  {hasMultiSelection && (
+                    <MenuItemLoose
+                      bg="transparent"
+                      color="#ff6b6b"
+                      _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
+                      onClick={() => {
+                        clearSelectedItems();
+                        deleteTokens(Array.from(selectedItems.keys()));
+                      }}
+                    >
+                      Supprimer la sélection ({selectedItems.size})
+                    </MenuItemLoose>
+                  )}
                   <MenuItemLoose
                     bg="transparent"
                     color="#ff6b6b"
                     _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
                     onClick={() => {
-                      clearSelectedItems();
-                      mapTokenDeleteMany({
-                        variables: {
-                          input: { mapId: map.id, tokenIds: Array.from(selectedItems.keys()) },
-                        },
-                      });
+                      deleteTokens([state.target!.id]);
                     }}
                   >
-                    Supprimer la sélection ({selectedItems.size})
+                    Supprimer
                   </MenuItemLoose>
-                )}
-                <MenuItemLoose
-                  bg="transparent"
-                  color="#ff6b6b"
-                  _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
-                  onClick={() => {
-                    mapTokenDeleteMany({
-                      variables: {
-                        input: { mapId: map.id, tokenIds: [state.target!.id] },
-                      },
-                    });
-                  }}
-                >
-                  Supprimer
-                </MenuItemLoose>
-              </>
-            );
-          })() : selectedItems.size > 0 ? (
+                </>
+              );
+            })()
+          ) : selectedItems.size > 0 ? (
             <>
-              {mi("#f2f2f2", "#1c1c1f", togglePropertiesPanel,
-                panelIsVisible ? "Masquer les propriétés" : "Afficher les propriétés"
+              {mi(
+                "#f2f2f2",
+                "#1c1c1f",
+                togglePropertiesPanel,
+                panelIsVisible
+                  ? "Masquer les propriétés"
+                  : "Afficher les propriétés"
               )}
               <MenuDividerLoose borderColor="rgba(255,255,255,0.1)" my="2px" />
-              {mi("#f2f2f2", "#1c1c1f", duplicateSelection,
+              {mi(
+                "#f2f2f2",
+                "#1c1c1f",
+                duplicateSelection,
                 `Dupliquer la sélection (${selectedItems.size})`
               )}
               <MenuItemLoose
@@ -361,11 +430,7 @@ export const ContextMenuRenderer = (props: {
                 _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
                 onClick={() => {
                   clearSelectedItems();
-                  mapTokenDeleteMany({
-                    variables: {
-                      input: { mapId: map.id, tokenIds: Array.from(selectedItems.keys()) },
-                    },
-                  });
+                  deleteTokens(Array.from(selectedItems.keys()));
                 }}
               >
                 Supprimer la sélection ({selectedItems.size})

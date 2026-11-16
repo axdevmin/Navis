@@ -336,6 +336,11 @@ type Map {
   weatherSettings: WeatherSettings!
 
   """
+  Rooms drawn by the DM. Players only receive the ones sheltered from the weather, which they need to mask it; the others would reveal the layout of unexplored areas.
+  """
+  rooms: [MapRoom!]!
+
+  """
   The combat tracker state of the map.
   """
   combat: CombatState!
@@ -424,6 +429,20 @@ enum WeatherType {
   moon
   wind
   cloudy
+}
+
+"""
+A room (polygon) drawn by the DM: revealable in one click, optionally sheltered from the weather.
+"""
+type MapRoom {
+  id: ID!
+  name: String!
+
+  """
+  Flat list of polygon vertices [x1, y1, x2, y2, ...].
+  """
+  points: [Float!]!
+  hasWeather: Boolean!
 }
 
 """
@@ -539,6 +558,11 @@ type Mutation {
   Update the weather settings of a map.
   """
   mapUpdateWeather(input: MapUpdateWeatherInput!): MapUpdateWeatherResult!
+
+  """
+  Replace the rooms (polygons) drawn on a map.
+  """
+  mapUpdateRooms(input: MapUpdateRoomsInput!): MapUpdateRoomsResult!
 
   """
   Ping a point on the map.
@@ -957,6 +981,22 @@ input WeatherSettingsInput {
   type: WeatherType!
   intensity: Float!
   windAngle: Float!
+}
+
+type MapUpdateRoomsResult {
+  updatedMap: Map!
+}
+
+input MapUpdateRoomsInput {
+  mapId: ID!
+  rooms: [MapRoomInput!]!
+}
+
+input MapRoomInput {
+  id: ID!
+  name: String!
+  points: [Float!]!
+  hasWeather: Boolean!
 }
 
 input MapPingInput {

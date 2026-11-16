@@ -136,6 +136,31 @@ export type WeatherSettings = {
   windAngle: number;
 };
 
+/**
+ * Pièce (ou zone) tracée par le MJ sur la carte : un polygone qu'il peut
+ * révéler d'un clic et qui peut être abritée de la météo.
+ */
+export type MapRoom = {
+  id: string;
+  name: string;
+  /** Sommets du polygone, à plat : [x1, y1, x2, y2, …] en pixels de l'image. */
+  points: Array<number>;
+  /** false : la météo ne s'affiche pas dans cette pièce (intérieur). */
+  hasWeather: boolean;
+};
+
+const prepareRooms = (rawRooms: unknown): Array<MapRoom> =>
+  Array.isArray(rawRooms)
+    ? rawRooms.filter(
+        (room): room is MapRoom =>
+          typeof room === "object" &&
+          room !== null &&
+          typeof room.id === "string" &&
+          Array.isArray(room.points) &&
+          room.points.length >= 6
+      )
+    : [];
+
 export const DEFAULT_WEATHER: WeatherSettings = {
   type: "none",
   intensity: 0.5,
@@ -179,7 +204,8 @@ const prepareCombat = (
   const participants = Array.isArray(combat.participants)
     ? (combat.participants as Array<{ [key: string]: unknown }>).map(
         (participant): CombatParticipantEntity => ({
-          id: typeof participant.id === "string" ? participant.id : randomUUID(),
+          id:
+            typeof participant.id === "string" ? participant.id : randomUUID(),
           name: typeof participant.name === "string" ? participant.name : "",
           faction:
             participant.faction === "hero" ||
@@ -191,17 +217,26 @@ const prepareCombat = (
             typeof participant.initiative === "number"
               ? participant.initiative
               : 0,
-          color: typeof participant.color === "string" ? participant.color : "#888888",
+          color:
+            typeof participant.color === "string"
+              ? participant.color
+              : "#888888",
           imageUrl:
-            typeof participant.imageUrl === "string" ? participant.imageUrl : null,
+            typeof participant.imageUrl === "string"
+              ? participant.imageUrl
+              : null,
           tokenId:
-            typeof participant.tokenId === "string" ? participant.tokenId : null,
+            typeof participant.tokenId === "string"
+              ? participant.tokenId
+              : null,
           isVisibleForPlayers:
             typeof participant.isVisibleForPlayers === "boolean"
               ? participant.isVisibleForPlayers
               : true,
           isDown:
-            typeof participant.isDown === "boolean" ? participant.isDown : false,
+            typeof participant.isDown === "boolean"
+              ? participant.isDown
+              : false,
         })
       )
     : [];
@@ -233,6 +268,7 @@ export type MapEntity = {
   mediaType: MediaType;
   weatherSettings: WeatherSettings;
   combat: CombatState;
+  rooms: Array<MapRoom>;
 };
 
 export class Maps {
@@ -318,6 +354,7 @@ export class Maps {
           "weatherSettings" in rawMap && rawMap.weatherSettings
             ? (rawMap.weatherSettings as WeatherSettings)
             : { ...DEFAULT_WEATHER },
+        rooms: prepareRooms("rooms" in rawMap ? rawMap.rooms : null),
         combat: prepareCombat(
           "combat" in rawMap
             ? (rawMap.combat as { [key: string]: unknown })
@@ -376,6 +413,7 @@ export class Maps {
         mediaType,
         weatherSettings: { ...DEFAULT_WEATHER },
         combat: { ...DEFAULT_COMBAT, participants: [] },
+        rooms: [],
       };
 
       await fs.move(filePath, path.join(this._buildMapFolderPath(id), mapPath));
@@ -416,6 +454,7 @@ export class Maps {
         mediaType: "video-url",
         weatherSettings: { ...DEFAULT_WEATHER },
         combat: { ...DEFAULT_COMBAT, participants: [] },
+        rooms: [],
       };
 
       await fs.writeFile(
@@ -533,7 +572,9 @@ export class Maps {
       // relative to it). For "video-url" maps "mapPath" is an external URL:
       // there is nothing to delete on disk.
       if (map.mapPath && map.mediaType !== "video-url") {
-        await fs.remove(path.join(this._buildMapFolderPath(map.id), map.mapPath));
+        await fs.remove(
+          path.join(this._buildMapFolderPath(map.id), map.mapPath)
+        );
       }
 
       const fileName = `map${fileExtension ? `.${fileExtension}` : ``}`;
@@ -839,8 +880,7 @@ export class Maps {
         (props.isVisibleForPlayers != null || props.isAlive !== undefined) &&
         combat?.participants?.some(
           (participant) =>
-            participant.tokenId !== null &&
-            tokenIds.has(participant.tokenId)
+            participant.tokenId !== null && tokenIds.has(participant.tokenId)
         )
       ) {
         combat = {
@@ -1018,7 +1058,10 @@ export class Maps {
       }
 
       const byId = new Map(
-        map.combat.participants.map((participant) => [participant.id, participant])
+        map.combat.participants.map((participant) => [
+          participant.id,
+          participant,
+        ])
       );
       const reordered = orderedIds
         .map((id) => byId.get(id))

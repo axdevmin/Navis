@@ -10,6 +10,7 @@ import { flow, identity } from "fp-ts/function";
 import * as E from "fp-ts/Either";
 import * as io from "io-ts";
 import { ThemedLevaPanel } from "./themed-leva-panel";
+import { TokenInspector } from "./token-inspector";
 import { useSelectedItems, usePropertiesPanel } from "./shared-token-state";
 import { levaPluginTokenImage } from "./leva-plugin/leva-plugin-token-image";
 import type { sharedTokenMenuUpdateManyMapTokenMutation } from "./__generated__/sharedTokenMenuUpdateManyMapTokenMutation.graphql";
@@ -199,25 +200,10 @@ const NoteAsidePreview = (props: { noteId: string }) => {
 const SingleTokenPanels = (props: { store: StoreType }) => {
   const referenceId = props.store.useStore(referenceIdSelector);
 
-  const [show, setShow] = useTokenMenuState();
-
   return (
     <>
       {referenceId == null ? null : <NoteAsidePreview noteId={referenceId} />}
-      <ThemedLevaPanel
-        store={props.store}
-        fill={true}
-        hideCopyButton
-        titleBar={{
-          filter: false,
-          drag: false,
-          title: "Token — touches + et − pour la taille",
-        }}
-        collapsed={{
-          collapsed: !show,
-          onChange: (collapsed) => setShow(!collapsed),
-        }}
-      />
+      <TokenInspector store={props.store} title="Token" />
     </>
   );
 };
@@ -376,22 +362,10 @@ const MultiTokenPanel = (props: { currentMapId: string }) => {
     set({ tokenImageId });
   }, [tokenImageId]);
 
-  const [show, setShow] = useTokenMenuState();
-
   return (
-    <ThemedLevaPanel
+    <TokenInspector
       store={store}
-      fill={true}
-      hideCopyButton
-      titleBar={{
-        filter: false,
-        drag: false,
-        title: `${selectedItems.size} tokens sélectionnés`,
-      }}
-      collapsed={{
-        collapsed: !show,
-        onChange: (collapsed) => setShow(!collapsed),
-      }}
+      title={`${selectedItems.size} tokens sélectionnés`}
     />
   );
 };

@@ -44,7 +44,10 @@ export type TokenPreset = {
   imageUrl: string;
 };
 
-const LIBRARY: Array<{ category: string; tokens: TokenPreset[] }> = [
+export const TOKEN_PRESET_LIBRARY: Array<{
+  category: string;
+  tokens: TokenPreset[];
+}> = [
   {
     category: "Classes",
     tokens: [
@@ -383,7 +386,7 @@ export const TokenLibrary = () => {
           </TokenGrid>
         </React.Fragment>
       ) : null}
-      {LIBRARY.map((section) => (
+      {TOKEN_PRESET_LIBRARY.map((section) => (
         <React.Fragment key={section.category}>
           <CategoryTitle>{section.category}</CategoryTitle>
           <TokenGrid>

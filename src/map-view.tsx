@@ -35,10 +35,7 @@ import type {
 import { useContextBridge } from "./hooks/use-context-bridge";
 import { MapGridEntity, MapTokenEntity, TokenType } from "./map-typings";
 import { useIsKeyPressed } from "./hooks/use-is-key-pressed";
-import {
-  getCanvasPixelRatio,
-  getGraphicsSettings,
-} from "./graphics-quality";
+import { getCanvasPixelRatio, getGraphicsSettings } from "./graphics-quality";
 import * as Icon from "./feather-icons";
 import { TextureLoader } from "three";
 import { ReactEventHandlers } from "react-use-gesture/dist/types";
@@ -74,6 +71,8 @@ import { UpdateTokenContext } from "./update-token-context";
 import { IsDungeonMasterContext } from "./is-dungeon-master-context";
 import { WeatherSystem } from "./weather-system";
 import { RenderDemand, RenderScheduler } from "./render-scheduler";
+import { tokenSnapshots } from "./undo-history";
+import { WeatherShelter } from "./map-rooms";
 import type { WeatherSettings } from "./weather-types";
 import { DiceRollRenderer } from "./dice-roll-renderer";
 
@@ -197,6 +196,14 @@ const TokenListRendererFragment = graphql`
     grid {
       columnWidth
     }
+    combat {
+      isActive
+      currentParticipantId
+      participants {
+        id
+        tokenId
+      }
+    }
   }
 `;
 
@@ -204,6 +211,12 @@ const TokenListRenderer = (props: {
   map: mapView_TokenListRendererFragment$key;
 }) => {
   const map = useFragment(TokenListRendererFragment, props.map);
+  // Token dont c'est le tour dans le combat en cours (s'il est sur la carte).
+  const activeTurnTokenId = map.combat.isActive
+    ? map.combat.participants.find(
+        (participant) => participant.id === map.combat.currentParticipantId
+      )?.tokenId ?? null
+    : null;
   return (
     <group renderOrder={LayerRenderOrder.token}>
       {map.tokens.map((token) => (
@@ -212,6 +225,7 @@ const TokenListRenderer = (props: {
           key={token.id}
           token={token}
           columnWidth={map.grid?.columnWidth ?? null}
+          isActiveTurn={token.id === activeTurnTokenId}
         />
       ))}
     </group>
@@ -256,6 +270,8 @@ const TokenRenderer = (props: {
   id: string;
   token: mapView_TokenRendererMapTokenFragment$key;
   columnWidth: number | null;
+  /** C'est le tour de ce token dans le combat en cours. */
+  isActiveTurn: boolean;
 }) => {
   const token = useFragment(TokenRendererMapTokenFragment, props.token);
   const sharedMapState = React.useContext(SharedMapState);
@@ -264,6 +280,29 @@ const TokenRenderer = (props: {
     useMutation<mapView_SaveAsLibraryCharacterMutation>(
       SaveAsLibraryCharacterMutation
     );
+  // Valeurs courantes du token, lues par l'historique annuler / rétablir.
+  React.useEffect(() => {
+    tokenSnapshots.set(props.id, {
+      x: token.x,
+      y: token.y,
+      radius: token.radius,
+      rotation: token.rotation,
+      color: token.color,
+      label: token.label,
+      isLocked: token.isLocked,
+      isVisibleForPlayers: token.isVisibleForPlayers,
+      isMovableByPlayers: token.isMovableByPlayers,
+      tokenType: token.tokenType,
+      isAlive: token.isAlive,
+    });
+  });
+  React.useEffect(
+    () => () => {
+      tokenSnapshots.delete(props.id);
+    },
+    [props.id]
+  );
+
   const pendingChangesRef = React.useRef<TokenPartialChanges>({});
   const enqueueSave = useStaticRef(() =>
     debounce(() => {
@@ -508,11 +547,11 @@ const TokenRenderer = (props: {
         label: "Type",
         value: token.tokenType ?? "marker",
         options: {
-          "Personnage": "character",
-          "Créature": "creature",
-          "Objet": "object",
-          "Danger": "hazard",
-          "Marqueur": "marker",
+          Personnage: "character",
+          Créature: "creature",
+          Objet: "object",
+          Danger: "hazard",
+          Marqueur: "marker",
         },
         onChange: (tokenType: TokenType, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -933,6 +972,30 @@ const TokenRenderer = (props: {
           />
         </mesh>
         {/* Selection highlight */}
+        {props.isActiveTurn ? (
+          // halo du tour en cours : un anneau laiton net, doublé d'une lueur
+          <>
+            <mesh renderOrder={LayerRenderOrder.outline}>
+              <ringBufferGeometry
+                attach="geometry"
+                args={[initialRadius * 1.3, initialRadius * 1.44, 128]}
+              />
+              <meshBasicMaterial attach="material" color="#e3b565" />
+            </mesh>
+            <mesh renderOrder={LayerRenderOrder.outline}>
+              <ringBufferGeometry
+                attach="geometry"
+                args={[initialRadius * 1.44, initialRadius * 1.8, 128]}
+              />
+              <meshBasicMaterial
+                attach="material"
+                color="#e3b565"
+                transparent
+                opacity={0.28}
+              />
+            </mesh>
+          </>
+        ) : null}
         {tokenSelection.isSelected ? (
           <mesh renderOrder={LayerRenderOrder.outline}>
             <ringBufferGeometry
@@ -1285,17 +1348,18 @@ const TextureElement = (props: {
 //   );
 // };
 
-const MarkedAreaRenderer: React.FC<{
-  x: number;
-  y: number;
-  factor: number;
-  dimensions: Dimensions;
-  remove: () => void;
-  radius: number;
-}> = (props) => {
-  const sharedMapState = React.useContext(SharedMapState);
-  const initialRadius = 10 * props.factor;
+/** Nombre d'ondes d'un signal et décalage entre elles. */
+const PING_RING_COUNT = 3;
+const PING_RING_DELAY_MS = 450;
+const PING_RING_DURATION_MS = 1800;
 
+const MarkedAreaRing = (props: {
+  position: [number, number, number];
+  initialRadius: number;
+  radius: number;
+  delay: number;
+  onRest?: () => void;
+}) => {
   const spring = useSpring({
     from: {
       scale: [1, 1, 1] as [number, number, number],
@@ -1309,42 +1373,75 @@ const MarkedAreaRenderer: React.FC<{
       ],
       opacity: 0,
     },
+    delay: props.delay,
     config: {
-      duration: 2000,
+      duration: PING_RING_DURATION_MS,
     },
-    onRest: () => {
-      props.remove();
-    },
+    onRest: props.onRest,
   });
 
   return (
     <animated.mesh
       scale={spring.scale}
-      position={[
-        calculateX(
-          props.x,
-          props.factor * sharedMapState.ratio,
-          props.dimensions.width
-        ),
-        calculateY(
-          props.y,
-          props.factor * sharedMapState.ratio,
-          props.dimensions.height
-        ),
-        0,
-      ]}
+      position={props.position}
+      renderOrder={LayerRenderOrder.marker}
     >
       <ringBufferGeometry
         attach="geometry"
-        args={[initialRadius * (1 - 0.05), initialRadius, 128]}
+        args={[props.initialRadius * 0.82, props.initialRadius, 96]}
       />
       <AnimatedMeshStandardMaterial
         attach="material"
-        color={"red"}
+        color={"#ff3b30"}
         transparent
         opacity={spring.opacity}
       />
     </animated.mesh>
+  );
+};
+
+/**
+ * Signal (« ping ») : trois ondes successives, bien visibles sur une TV,
+ * à l'endroit pointé par le MJ ou par un joueur.
+ */
+const MarkedAreaRenderer: React.FC<{
+  x: number;
+  y: number;
+  factor: number;
+  dimensions: Dimensions;
+  remove: () => void;
+  radius: number;
+}> = (props) => {
+  const sharedMapState = React.useContext(SharedMapState);
+  const initialRadius = 10 * props.factor;
+  const position: [number, number, number] = [
+    calculateX(
+      props.x,
+      props.factor * sharedMapState.ratio,
+      props.dimensions.width
+    ),
+    calculateY(
+      props.y,
+      props.factor * sharedMapState.ratio,
+      props.dimensions.height
+    ),
+    0,
+  ];
+
+  return (
+    <>
+      {Array.from({ length: PING_RING_COUNT }, (_, index) => (
+        <MarkedAreaRing
+          key={index}
+          position={position}
+          initialRadius={initialRadius}
+          radius={props.radius}
+          delay={index * PING_RING_DELAY_MS}
+          // le signal disparaît quand la dernière onde s'est éteinte
+          onRest={index === PING_RING_COUNT - 1 ? props.remove : undefined}
+        />
+      ))}
+    </>
   );
 };
 
@@ -1790,6 +1887,11 @@ export type MapControlInterface = {
 const MapViewRendererFragment = graphql`
   fragment mapView_MapViewRendererFragment on Map {
     mediaType
+    rooms {
+      id
+      points
+      hasWeather
+    }
     ...mapView_MapRendererFragment
   }
 `;
@@ -2206,13 +2308,19 @@ const MapViewRenderer = (props: {
             handlerContext={toolContext}
           />
         ) : null}
-        <WeatherSystem
-          config={props.weatherConfig}
-          dimensions={{
-            width: dimensions.width,
-            height: dimensions.height,
-          }}
-        />
+        <WeatherShelter
+          rooms={map.rooms}
+          toScene={toolContext.helper.imageCoordinatesToThreePoint}
+          renderOrder={LayerRenderOrder.weather - 0.5}
+        >
+          <WeatherSystem
+            config={props.weatherConfig}
+            dimensions={{
+              width: dimensions.width,
+              height: dimensions.height,
+            }}
+          />
+        </WeatherShelter>
       </Plane>
       <DiceRollRenderer mapId={props.mapId} />
     </SharedMapState.Provider>

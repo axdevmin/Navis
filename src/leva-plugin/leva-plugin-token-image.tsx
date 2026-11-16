@@ -58,81 +58,70 @@ import { useCurrent } from "../hooks/use-current";
 
 const { Row, Label } = LevaComponents;
 
-const TokenImageReference = () => {
-  const { displayValue, setValue } = useInputContext<any>();
+/** Contrôle « image du token » réutilisable hors de leva (inspecteur). */
+export const TokenImageControl = (props: {
+  value: string | null;
+  setValue: (value: string | null) => void;
+}) => {
   const [node, selectFile] = useTokenImageUpload();
+  const { value, setValue } = props;
 
   return (
     <>
       <PortalLoose>{node}</PortalLoose>
-      <Row input>
-        <Label>Image</Label>
-        <HStackLoose alignItems="center" spacing={1}>
-          {displayValue ? (
-            <>
-              <BoxLoose>
-                <PopoverLoose
-                  isLazy
-                  placement="top-start"
-                  closeOnBlur={node === null}
-                >
-                  <PopoverTriggerLoose>
-                    <ButtonLoose size="xs">Changer</ButtonLoose>
-                  </PopoverTriggerLoose>
-                  <PortalLoose>
-                    <PopoverContentLoose
-                      width="400px"
-                      bg="#141416"
-                      borderColor="rgba(255,255,255,0.1)"
-                      color="#f2f2f2"
-                    >
-                      <TokenImagePopoverContent
-                        onSelect={(value) => setValue(value)}
-                        onSelectFile={(file, connection) =>
-                          selectFile(file, [connection])
-                        }
-                      />
-                    </PopoverContentLoose>
-                  </PortalLoose>
-                </PopoverLoose>
-              </BoxLoose>
-              <BoxLoose>
-                <ButtonLoose
-                  size="xs"
-                  onClick={() => {
-                    setValue(null);
-                  }}
-                >
-                  Retirer
-                </ButtonLoose>
-              </BoxLoose>
-            </>
-          ) : (
-            <BoxLoose>
-              <PopoverLoose
-                isLazy
-                placement="top-start"
-                closeOnBlur={node === null}
+      <HStackLoose alignItems="center" spacing={1}>
+        <BoxLoose>
+          <PopoverLoose
+            isLazy
+            placement="top-start"
+            closeOnBlur={node === null}
+          >
+            <PopoverTriggerLoose>
+              <ButtonLoose size="xs">
+                {value ? "Changer" : "Ajouter"}
+              </ButtonLoose>
+            </PopoverTriggerLoose>
+            <PortalLoose>
+              <PopoverContentLoose
+                width="400px"
+                bg="#141416"
+                borderColor="rgba(255,255,255,0.1)"
+                color="#f2f2f2"
               >
-                <PopoverTriggerLoose>
-                  <ButtonLoose size="xs">Ajouter</ButtonLoose>
-                </PopoverTriggerLoose>
-                <PortalLoose>
-                  <PopoverContentLoose width="400px">
-                    <TokenImagePopoverContent
-                      onSelect={(value) => setValue(value)}
-                      onSelectFile={(file, connection) =>
-                        selectFile(file, [connection])
-                      }
-                    />
-                  </PopoverContentLoose>
-                </PortalLoose>
-              </PopoverLoose>
-            </BoxLoose>
-          )}
-        </HStackLoose>
-      </Row>
+                <TokenImagePopoverContent
+                  onSelect={(value) => setValue(value)}
+                  onSelectFile={(file, connection) =>
+                    selectFile(file, [connection])
+                  }
+                />
+              </PopoverContentLoose>
+            </PortalLoose>
+          </PopoverLoose>
+        </BoxLoose>
+        {value ? (
+          <BoxLoose>
+            <ButtonLoose
+              size="xs"
+              onClick={() => {
+                setValue(null);
+              }}
+            >
+              Retirer
+            </ButtonLoose>
+          </BoxLoose>
+        ) : null}
+      </HStackLoose>
     </>
+  );
+};
+
+const TokenImageReference = () => {
+  const { displayValue, setValue } = useInputContext<any>();
+  return (
+    <Row input>
+      <Label>Image</Label>
+      <TokenImageControl value={displayValue} setValue={setValue} />
+    </Row>
   );
 };
 

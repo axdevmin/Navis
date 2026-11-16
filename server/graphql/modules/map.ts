@@ -15,6 +15,7 @@ import {
   MapTokenEntity,
   TokenType,
   WeatherSettings,
+  MapRoom,
   WeatherType,
 } from "../../maps";
 import { IntegerFromString } from "../../io-types/integer-from-string";
@@ -114,6 +115,51 @@ const GraphQLMapUpdateWeatherResultType =
       t.field({ name: "updatedMap", type: t.NonNull(GraphQLMapType) }),
     ],
   });
+
+const GraphQLMapRoomType = t.objectType<MapRoom>({
+  name: "MapRoom",
+  description:
+    "A room (polygon) drawn by the DM: revealable in one click, optionally sheltered from the weather.",
+  fields: () => [
+    t.field({ name: "id", type: t.NonNull(t.ID) }),
+    t.field({ name: "name", type: t.NonNull(t.String) }),
+    t.field({
+      name: "points",
+      description: "Flat list of polygon vertices [x1, y1, x2, y2, ...].",
+      type: t.NonNull(t.List(t.NonNull(t.Float))),
+    }),
+    t.field({ name: "hasWeather", type: t.NonNull(t.Boolean) }),
+  ],
+});
+
+const GraphQLMapRoomInputType = t.inputObjectType({
+  name: "MapRoomInput",
+  fields: () => ({
+    id: { type: t.NonNullInput(t.ID) },
+    name: { type: t.NonNullInput(t.String) },
+    points: { type: t.NonNullInput(t.ListInput(t.NonNullInput(t.Float))) },
+    hasWeather: { type: t.NonNullInput(t.Boolean) },
+  }),
+});
+
+const GraphQLMapUpdateRoomsInputType = t.inputObjectType({
+  name: "MapUpdateRoomsInput",
+  fields: () => ({
+    mapId: { type: t.NonNullInput(t.ID) },
+    rooms: {
+      type: t.NonNullInput(
+        t.ListInput(t.NonNullInput(GraphQLMapRoomInputType))
+      ),
+    },
+  }),
+});
+
+const GraphQLMapUpdateRoomsResultType = t.objectType<lib.MapUpdateRoomsResult>({
+  name: "MapUpdateRoomsResult",
+  fields: () => [
+    t.field({ name: "updatedMap", type: t.NonNull(GraphQLMapType) }),
+  ],
+});
 
 const GraphQLCombatFactionEnum = t.enumType<CombatFaction>({
   name: "CombatFaction",
@@ -731,6 +777,29 @@ export const mutationFields = [
       ),
   }),
   t.field({
+    name: "mapUpdateRooms",
+    description: "Replace the rooms (polygons) drawn on a map.",
+    type: t.NonNull(GraphQLMapUpdateRoomsResultType),
+    args: {
+      input: t.arg(t.NonNullInput(GraphQLMapUpdateRoomsInputType)),
+    },
+    resolve: (_, { input }, context) =>
+      RT.run(
+        lib.mapUpdateRooms({
+          mapId: input.mapId,
+          rooms: input.rooms
+            .filter((room) => room.points.length >= 6)
+            .map((room) => ({
+              id: room.id,
+              name: room.name,
+              points: room.points,
+              hasWeather: room.hasWeather,
+            })),
+        }),
+        context
+      ),
+  }),
+  t.field({
     name: "mapPing",
     description: "Ping a point on the map.",
     type: t.Boolean,
@@ -1115,6 +1184,16 @@ const GraphQLMapType = t.objectType<MapEntity>({
       name: "weatherSettings",
       description: "The current weather effect on the map.",
       type: t.NonNull(GraphQLWeatherSettingsType),
+    }),
+    t.field({
+      name: "rooms",
+      description:
+        "Rooms drawn by the DM. Players only receive the ones sheltered from the weather, which they need to mask it; the others would reveal the layout of unexplored areas.",
+      type: t.NonNull(t.List(t.NonNull(GraphQLMapRoomType))),
+      resolve: (source, _, context) =>
+        context.session.role === "admin"
+          ? source.rooms ?? []
+          : (source.rooms ?? []).filter((room) => room.hasWeather === false),
     }),
     t.field({
       name: "combat",

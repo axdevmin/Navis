@@ -3,6 +3,7 @@ import graphql from "babel-plugin-relay/macro";
 import { useFragment, useMutation, usePagination, useQuery } from "relay-hooks";
 import { ConnectionHandler } from "relay-runtime";
 import { Modal, ModalDialogSize } from "../modal";
+import { LibraryHeader, LibraryTab } from "./library/library-tabs";
 import * as Icon from "../feather-icons";
 import { Input, InputGroup } from "../input";
 import * as Button from "../button";
@@ -79,6 +80,8 @@ type ModalStates =
     };
 
 type SelectMapModalProps = {
+  /** Passer à un autre rayon de la bibliothèque (personnages, images). */
+  onSelectTab: (tab: LibraryTab) => void;
   closeModal: () => void;
   setLoadedMapId: (id: string) => void;
   liveMapId: null | string;
@@ -416,6 +419,7 @@ export const SelectMapModal = ({
   liveMapId,
   loadedMapId,
   canClose,
+  onSelectTab,
 }: SelectMapModalProps): React.ReactElement => {
   const [activeMapId, setActiveMapId] = React.useState(loadedMapId);
   const [modalState, setModalState] = React.useState<ModalStates | null>(null);
@@ -512,22 +516,13 @@ export const SelectMapModal = ({
     <>
       <Modal onClickOutside={closeIfPossible} onPressEscape={closeIfPossible}>
         <Modal.Dialog>
-          <Modal.Header>
-            <Modal.Heading2>
-              <Icon.Map boxSize="28px" /> Bibliothèque de cartes
-            </Modal.Heading2>
-            <div style={{ flex: 1, textAlign: "right" }}>
-              {canClose ? (
-                <Button.Tertiary
-                  tabIndex={1}
-                  style={{ marginLeft: 8 }}
-                  onClick={closeModal}
-                >
-                  Fermer
-                </Button.Tertiary>
-              ) : null}
-            </div>
-          </Modal.Header>
+          <LibraryHeader
+            activeTab="maps"
+            onSelectTab={(tab) => {
+              if (tab !== "maps") onSelectTab(tab);
+            }}
+            onClose={canClose ? closeModal : undefined}
+          />
           <Modal.Body style={{ display: "flex", height: "80vh" }} noPadding>
             <Modal.Aside>
               <div

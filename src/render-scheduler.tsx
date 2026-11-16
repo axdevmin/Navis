@@ -9,6 +9,16 @@ import { useThree } from "react-three-fiber";
  */
 export type RenderDemand = "idle" | "slow" | "continuous";
 
+const renderRequestListeners = new Set<() => void>();
+
+/**
+ * À appeler après une modification que rien d'autre ne signale (texture
+ * redessinée hors de React, par exemple une annulation du brouillard).
+ */
+export const requestMapRender = (): void => {
+  renderRequestListeners.forEach((listener) => listener());
+};
+
 /** Après une interaction, on dessine à pleine cadence pendant ce délai. */
 const ACTIVE_WINDOW_MS = 1500;
 /** Cadence du mode "slow" (~30 images/s, quel que soit l'écran). */
@@ -96,6 +106,8 @@ export const RenderScheduler = (props: { demand: RenderDemand }): null => {
     window.addEventListener("pointermove", onPointerMove, options);
     document.addEventListener("visibilitychange", kick);
 
+    renderRequestListeners.add(kick);
+
     const heartbeat = window.setInterval(() => invalidate(), HEARTBEAT_MS);
 
     kick();
@@ -106,6 +118,7 @@ export const RenderScheduler = (props: { demand: RenderDemand }): null => {
       }
       window.removeEventListener("pointermove", onPointerMove, options);
       document.removeEventListener("visibilitychange", kick);
+      renderRequestListeners.delete(kick);
       window.clearInterval(heartbeat);
       if (frameHandle !== 0) {
         cancelAnimationFrame(frameHandle);

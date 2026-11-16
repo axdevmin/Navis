@@ -1,4 +1,5 @@
 import * as React from "react";
+import { TOKEN_PRESET_LIBRARY as PRESET_LIBRARY } from "../token-library";
 import graphql from "babel-plugin-relay/macro";
 import { useQuery, useMutation } from "relay-hooks";
 import styled from "@emotion/styled/macro";
@@ -58,9 +59,7 @@ const DeleteMutation = graphql`
 `;
 
 const AddToMapMutation = graphql`
-  mutation characterLibraryTab_AddToMapMutation(
-    $input: MapTokenAddManyInput!
-  ) {
+  mutation characterLibraryTab_AddToMapMutation($input: MapTokenAddManyInput!) {
     mapTokenAddMany(input: $input)
   }
 `;
@@ -71,6 +70,9 @@ const Container = styled.div`
   height: 100%;
   min-height: 0;
   gap: 16px;
+  /* un seul défilement pour toute la page : mes personnages puis les modèles */
+  overflow-y: auto;
+  padding-right: 4px;
 `;
 
 const CreateForm = styled.div`
@@ -143,8 +145,7 @@ const FactionButton = styled.button<{
   border-radius: ${ds.radii.sm};
   cursor: pointer;
   font-size: 14px;
-  border: 1px solid
-    ${(p) => (p.isActive ? p.factionColor : ds.colors.border)};
+  border: 1px solid ${(p) => (p.isActive ? p.factionColor : ds.colors.border)};
   background: ${(p) => (p.isActive ? `${p.factionColor}33` : "transparent")};
 
   &:hover {
@@ -159,9 +160,7 @@ const Grid = styled.div`
   align-content: start;
   align-items: start;
   gap: 12px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
 `;
 
 const Card = styled.div`
@@ -264,6 +263,8 @@ const EmptyState = styled.div`
 
 export const CharacterLibraryTab = (props: {
   mapId: string | null;
+  /** Où poser un token ajouté depuis la bibliothèque (coordonnées image). */
+  getDropPoint: () => [number, number];
 }): React.ReactElement => {
   const { data, retry } = useQuery<characterLibraryTab_Query>(Query);
   const [createCharacter] =
@@ -324,7 +325,11 @@ export const CharacterLibraryTab = (props: {
           title="Choisir un portrait"
           onClick={() => fileInputRef.current?.click()}
         >
-          {portraitUrl ? <img src={portraitUrl} alt="" /> : <Icon.Image boxSize="18px" />}
+          {portraitUrl ? (
+            <img src={portraitUrl} alt="" />
+          ) : (
+            <Icon.Image boxSize="18px" />
+          )}
         </PortraitButton>
         <NameInput
           placeholder="Nom du personnage…"
@@ -359,13 +364,14 @@ export const CharacterLibraryTab = (props: {
 
       {!data || data.libraryCharacters.length === 0 ? (
         <EmptyState>
-          Aucun personnage enregistré. Créez-en un ci-dessus pour le
-          réutiliser sur la carte ou en combat.
+          Aucun personnage enregistré. Créez-en un ci-dessus pour le réutiliser
+          sur la carte ou en combat.
         </EmptyState>
       ) : (
         <Grid>
           {data.libraryCharacters.map((character) => {
-            const meta = FACTION_META[character.faction as CombatFaction] ??
+            const meta =
+              FACTION_META[character.faction as CombatFaction] ??
               FACTION_META.neutral;
             const payload: LibraryCharacterDragPayload = {
               label: character.name,
@@ -419,8 +425,8 @@ export const CharacterLibraryTab = (props: {
                             tokens: [
                               {
                                 color: character.color,
-                                x: 0,
-                                y: 0,
+                                x: props.getDropPoint()[0],
+                                y: props.getDropPoint()[1],
                                 rotation: 0,
                                 label: character.name,
                                 isVisibleForPlayers: false,
@@ -445,7 +451,63 @@ export const CharacterLibraryTab = (props: {
           })}
         </Grid>
       )}
+      {props.mapId
+        ? PRESET_LIBRARY.map((section) => (
+            // modèles prêts à l'emploi (ancien bouton « Tokens » du dock)
+            <React.Fragment key={section.category}>
+              <SectionTitle>Modèles · {section.category}</SectionTitle>
+              <Grid>
+                {section.tokens.map((preset) => (
+                  <Card
+                    key={preset.label}
+                    factionColor={preset.color}
+                    title={`Ajouter « ${preset.label} » sur la carte`}
+                    onClick={() => {
+                      const [x, y] = props.getDropPoint();
+                      addToMap({
+                        variables: {
+                          input: {
+                            mapId: props.mapId!,
+                            tokens: [
+                              {
+                                color: preset.color,
+                                x,
+                                y,
+                                rotation: 0,
+                                label: preset.label,
+                                isVisibleForPlayers: false,
+                                isMovableByPlayers: false,
+                                isLocked: false,
+                                tokenType: preset.tokenType,
+                                isAlive: true,
+                                imageUrl: preset.imageUrl,
+                              },
+                            ],
+                          },
+                        },
+                      });
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Avatar color={preset.color}>
+                      <img src={preset.imageUrl} alt="" />
+                    </Avatar>
+                    <CardName>{preset.label}</CardName>
+                  </Card>
+                ))}
+              </Grid>
+            </React.Fragment>
+          ))
+        : null}
       {modalNode}
     </Container>
   );
 };
+
+const SectionTitle = styled.div`
+  flex-shrink: 0;
+  padding: 8px 2px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: ${ds.colors.textMuted};
+`;
