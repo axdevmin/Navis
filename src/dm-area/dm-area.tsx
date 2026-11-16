@@ -24,7 +24,7 @@ import { ISendRequestTask, sendRequest } from "../http-request";
 import { AuthenticatedAppShell } from "../authenticated-app-shell";
 import { AccessTokenProvider } from "../hooks/use-access-token";
 import { usePersistedState } from "../hooks/use-persisted-state";
-import { DmMap } from "./dm-map";
+import { DmMap, SendLiveMapResult } from "./dm-map";
 import { Socket } from "socket.io-client";
 import { MapTokenEntity } from "../map-typings";
 import { isFileDrag } from "../hooks/use-drop-zone";
@@ -34,7 +34,6 @@ import {
   LibraryCharacterDragPayload,
 } from "./library/library-character-drag-type";
 import { useRandomBackground } from "../hooks/use-random-background";
-import { useNoteWindowActions } from "./token-info-aside";
 import { MapControlInterface } from "../map-view";
 import { useTokenImageUpload } from "./token-image-upload";
 import { dmAreaTokenAddManyMutation } from "./__generated__/dmAreaTokenAddManyMutation.graphql";
@@ -89,6 +88,7 @@ type Mode =
     }
   | {
       title: "MEDIA_LIBRARY";
+      tab: "characters" | "images";
     };
 
 const createInitialMode = (): Mode => ({
@@ -196,28 +196,26 @@ const Content = ({
 
   const sendLiveMapTaskRef = React.useRef<null | ISendRequestTask>(null);
   const sendLiveMap = React.useCallback(
-    async (canvas: HTMLCanvasElement) => {
+    async (canvas: HTMLCanvasElement): Promise<SendLiveMapResult> => {
       const loadedMapId = dmAreaResponse.data?.map?.id;
 
       if (!loadedMapId) {
-        return;
+        return "error";
       }
 
-      if (sendLiveMapTaskRef.current) {
-        sendLiveMapTaskRef.current.abort();
+      sendLiveMapTaskRef.current?.abort();
+      const blob = await new Promise<Blob | null>((res) => {
+        canvas.toBlob(res);
+      });
+      if (!blob) {
+        return "error";
       }
-      const blob = await new Promise<Blob>((res) => {
-        canvas.toBlob((blob) => {
-          res(blob!);
-        });
-      });
-
-      const image = new File([blob], "fog.live.png", {
-        type: "image/png",
-      });
 
       const formData = new FormData();
-      formData.append("image", image);
+      formData.append(
+        "image",
+        new File([blob], "fog.live.png", { type: "image/png" })
+      );
 
       const task = sendRequest({
         url: buildApiUrl(`/map/${loadedMapId}/send`),
@@ -229,9 +227,11 @@ const Content = ({
       });
       sendLiveMapTaskRef.current = task;
       const result = await task.done;
-      if (result.type !== "success") {
-        return;
-      }
+      return result.type === "success"
+        ? "success"
+        : result.type === "abort"
+        ? "aborted"
+        : "error";
     },
     [dmAreaResponse.data?.map?.id, dmPassword]
   );
@@ -245,22 +245,21 @@ const Content = ({
         return;
       }
 
-      if (sendLiveMapTaskRef.current) {
-        sendLiveMapTaskRef.current.abort();
-      }
-      const blob = await new Promise<Blob>((res) => {
-        canvas.toBlob((blob) => {
-          res(blob!);
-        });
+      // Seule la sauvegarde précédente du brouillard est annulée : annuler ici
+      // l'envoi aux joueurs (comme avant) faisait perdre un « Envoyer » si le
+      // MJ redessinait juste après.
+      sendProgressFogTaskRef.current?.abort();
+      const blob = await new Promise<Blob | null>((res) => {
+        canvas.toBlob(res);
       });
+      if (!blob) {
+        return;
+      }
 
       const formData = new FormData();
-
       formData.append(
         "image",
-        new File([blob], "fog.png", {
-          type: "image/png",
-        })
+        new File([blob], "fog.png", { type: "image/png" })
       );
 
       const task = sendRequest({
@@ -272,10 +271,7 @@ const Content = ({
         },
       });
       sendProgressFogTaskRef.current = task;
-      const result = await task.done;
-      if (result.type !== "success") {
-        return;
-      }
+      await task.done;
     },
     [dmAreaResponse.data?.map?.id, dmPassword]
   );
@@ -300,7 +296,6 @@ const Content = ({
     null
   );
 
-  const actions = useNoteWindowActions();
   const controlRef = React.useRef<MapControlInterface | null>(null);
 
   const dragRef = React.useRef(0);
@@ -336,9 +331,16 @@ const Content = ({
           // thanks relay :D
           // so we wanna show the map library if the data is loaded aka data is not undefined but data.map is undefined :D
           dmAreaResponse.data &&
-          !dmAreaResponse.data.map) ||
+          !dmAreaResponse.data.map &&
+          // l'onglet personnages / images peut s'ouvrir sans carte chargée
+          mode.title !== "MEDIA_LIBRARY") ||
         mode.title === "SHOW_MAP_LIBRARY" ? (
           <SelectMapModal
+            onSelectTab={(tab) => {
+              if (tab !== "maps") {
+                setMode({ title: "MEDIA_LIBRARY", tab });
+              }
+            }}
             canClose={dmAreaResponse.data?.map !== null}
             loadedMapId={loadedMapId}
             liveMapId={dmAreaResponse.data?.map?.id ?? null}
@@ -361,6 +363,20 @@ const Content = ({
         ) : null}
         {mode.title === "MEDIA_LIBRARY" ? (
           <MediaLibrary
+            // la clé rouvre la fenêtre sur le bon onglet
+            key={mode.tab}
+            initialTab={mode.tab}
+            onSelectMaps={() => setMode({ title: "SHOW_MAP_LIBRARY" })}
+            getDropPoint={() => {
+              // au centre de ce que le MJ regarde, pas dans un coin de l'image
+              const context = controlRef.current?.getContext();
+              if (!context) return [0, 0];
+              const [x, y] = context.helper.coordinates.screenToImage([
+                window.innerWidth / 2,
+                window.innerHeight / 2,
+              ]);
+              return [Math.round(x), Math.round(y)];
+            }}
             mapId={dmAreaResponse.data?.map?.id ?? null}
             onClose={() => {
               setMode({ title: "EDIT_MAP" });
@@ -387,13 +403,16 @@ const Content = ({
               ev.preventDefault();
             }}
             onDragOver={(ev) => {
-              const isLibraryDrag = ev.dataTransfer.types.includes(
-                LIBRARY_DRAG_TYPE
-              );
+              const isLibraryDrag =
+                ev.dataTransfer.types.includes(LIBRARY_DRAG_TYPE);
               const isLibraryCharacterDrag = ev.dataTransfer.types.includes(
                 LIBRARY_CHARACTER_DRAG_TYPE
               );
-              if (!isFileDrag(ev) && !isLibraryDrag && !isLibraryCharacterDrag) {
+              if (
+                !isFileDrag(ev) &&
+                !isLibraryDrag &&
+                !isLibraryCharacterDrag
+              ) {
                 return;
               }
               ev.preventDefault();
@@ -568,7 +587,7 @@ const Content = ({
                     }
                   }}
                 >
-                  Import Map or Media Library Item
+                  Déposez le fichier ici pour l'importer (carte ou bibliothèque)
                 </DropZone>
               </CenterLoose>
             ) : null}
@@ -588,11 +607,9 @@ const Content = ({
                 saveFogProgress={saveFogProgress}
                 hideMap={hideMap}
                 showMapModal={showMapModal}
-                openNotes={() => {
-                  actions.showNoteInWindow(null, "note-editor", true);
-                }}
-                openMediaLibrary={() => {
-                  setMode({ title: "MEDIA_LIBRARY" });
+                loadMap={setLoadedMapId}
+                openMediaLibrary={(tab) => {
+                  setMode({ title: "MEDIA_LIBRARY", tab });
                 }}
                 updateToken={updateToken}
                 onLogout={onLogout}
@@ -710,9 +727,12 @@ const DropZone = (props: DropZoneProps): React.ReactElement => {
   return (
     <BoxLoose
       padding="2"
-      background="rgba(13,15,20,0.85)"
+      marginTop="76px"
+      color="#f2f2f2"
+      fontSize="14px"
+      background="rgba(11, 11, 12,0.9)"
       borderRadius="10px"
-      outline="2px dashed rgba(96,165,250,0.5)"
+      outline="2px dashed rgba(227, 181, 101,0.5)"
       outlineOffset="-10px"
       onDragEnter={props.onDragEnter}
       onDragOver={props.onDragOver}

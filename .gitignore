@@ -15,7 +15,6 @@ build
 server-build
 __generated__
 dist
-public/monaco-editor
 server/version.ts
 src/version.ts
 

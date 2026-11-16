@@ -3,6 +3,7 @@ import graphql from "babel-plugin-relay/macro";
 import { useFragment, useMutation, usePagination, useQuery } from "relay-hooks";
 import { ConnectionHandler } from "relay-runtime";
 import { Modal, ModalDialogSize } from "../modal";
+import { LibraryHeader, LibraryTab } from "./library/library-tabs";
 import * as Icon from "../feather-icons";
 import { Input, InputGroup } from "../input";
 import * as Button from "../button";
@@ -79,6 +80,8 @@ type ModalStates =
     };
 
 type SelectMapModalProps = {
+  /** Passer à un autre rayon de la bibliothèque (personnages, images). */
+  onSelectTab: (tab: LibraryTab) => void;
   closeModal: () => void;
   setLoadedMapId: (id: string) => void;
   liveMapId: null | string;
@@ -213,22 +216,27 @@ const MapList = (props: {
             }}
           >
             {(() => {
-              const weatherIcons: Record<string, string> = {
-                sun: "☀️",
-                cloudy: "⛅",
-                rain: "🌧️",
-                storm: "⛈️",
-                snow: "❄️",
-                wind: "💨",
-                moon: "🌙",
+              const weatherIcons: Record<string, typeof Icon.Cloud> = {
+                sun: Icon.Sun,
+                cloudy: Icon.Cloud,
+                rain: Icon.CloudRain,
+                storm: Icon.CloudLightning,
+                snow: Icon.CloudSnow,
+                wind: Icon.Wind,
+                moon: Icon.Moon,
               };
-              const icon = weatherIcons[item.node.weatherSettings.type];
-              return icon ? (
-                <span title={item.node.weatherSettings.type}>{icon} </span>
+              const WeatherIcon = weatherIcons[item.node.weatherSettings.type];
+              return WeatherIcon ? (
+                <WeatherIcon
+                  boxSize="14px"
+                  marginRight="8px"
+                  verticalAlign="-2px"
+                  opacity={0.7}
+                />
               ) : null;
             })()}
             {item.node.title}{" "}
-            {item.node.id === props.liveMapId ? "(live)" : null}
+            {item.node.id === props.liveMapId ? "· en direct" : null}
           </ScrollableList.ListItemButton>
         </ScrollableList.ListItem>
       ))}
@@ -321,7 +329,7 @@ const ActiveMap = (props: {
             background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 8,
-            color: "#e8e6e1",
+            color: "#f2f2f2",
             fontFamily: "'Inter', system-ui, sans-serif",
             fontSize: 13,
             lineHeight: 1.5,
@@ -330,8 +338,8 @@ const ActiveMap = (props: {
             boxSizing: "border-box",
           }}
           onFocus={(e) => {
-            e.currentTarget.style.borderColor = "rgba(96,165,250,0.4)";
-            e.currentTarget.style.background = "rgba(96,165,250,0.06)";
+            e.currentTarget.style.borderColor = "rgba(227, 181, 101,0.4)";
+            e.currentTarget.style.background = "rgba(227, 181, 101,0.06)";
           }}
           onBlurCapture={(e) => {
             e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
@@ -411,6 +419,7 @@ export const SelectMapModal = ({
   liveMapId,
   loadedMapId,
   canClose,
+  onSelectTab,
 }: SelectMapModalProps): React.ReactElement => {
   const [activeMapId, setActiveMapId] = React.useState(loadedMapId);
   const [modalState, setModalState] = React.useState<ModalStates | null>(null);
@@ -507,22 +516,13 @@ export const SelectMapModal = ({
     <>
       <Modal onClickOutside={closeIfPossible} onPressEscape={closeIfPossible}>
         <Modal.Dialog>
-          <Modal.Header>
-            <Modal.Heading2>
-              <Icon.Map boxSize="28px" /> Bibliothèque de cartes
-            </Modal.Heading2>
-            <div style={{ flex: 1, textAlign: "right" }}>
-              {canClose ? (
-                <Button.Tertiary
-                  tabIndex={1}
-                  style={{ marginLeft: 8 }}
-                  onClick={closeModal}
-                >
-                  Fermer
-                </Button.Tertiary>
-              ) : null}
-            </div>
-          </Modal.Header>
+          <LibraryHeader
+            activeTab="maps"
+            onSelectTab={(tab) => {
+              if (tab !== "maps") onSelectTab(tab);
+            }}
+            onClose={canClose ? closeModal : undefined}
+          />
           <Modal.Body style={{ display: "flex", height: "80vh" }} noPadding>
             <Modal.Aside>
               <div
@@ -669,7 +669,10 @@ export const SelectMapModal = ({
                   Authorization: accessToken ? `Bearer ${accessToken}` : null,
                 },
                 onProgress: (progress) =>
-                  onProgress({ phase: "uploading", fraction: progress.fraction }),
+                  onProgress({
+                    phase: "uploading",
+                    fraction: progress.fraction,
+                  }),
               });
               const uploadResult = await uploadTask.done;
 
@@ -960,7 +963,9 @@ const CreateNewMapModal = ({
           {progress ? (
             <div style={{ marginTop: 16 }}>
               <ProgressBar
-                value={progress.phase === "uploading" ? progress.fraction : null}
+                value={
+                  progress.phase === "uploading" ? progress.fraction : null
+                }
                 label={createMapProgressLabel[progress.phase]}
               />
             </div>
@@ -979,7 +984,11 @@ const CreateNewMapModal = ({
                 </Button.Tertiary>
               </div>
               <div>
-                <Button.Primary type="submit" onClick={submit} disabled={isBusy}>
+                <Button.Primary
+                  type="submit"
+                  onClick={submit}
+                  disabled={isBusy}
+                >
                   {isBusy ? "Création en cours…" : "Créer la carte"}
                 </Button.Primary>
               </div>

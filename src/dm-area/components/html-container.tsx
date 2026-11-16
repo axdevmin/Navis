@@ -18,7 +18,6 @@ import {
   parseTemplateAttributes,
   Attribute,
 } from "../../utilities/attribute-parser";
-import { NoteLink } from "./note-link";
 import { SharableImage } from "./sharable-image";
 import { ChatMessageButton } from "./chat-message-button";
 import { randomHash } from "../../utilities/random-hash";
@@ -62,7 +61,6 @@ const components: Record<string, React.FunctionComponent<any>> = {
   Image: asLooseComponent(SharableImage),
   ChatMessage: asLooseComponent(ChatMessageButton),
   ChatMacro: asLooseComponent(ChatMessageButton),
-  Link: asLooseComponent(NoteLink),
   Checkbox: asLooseComponent(Checkbox),
   h1: H1,
   h2: H2,

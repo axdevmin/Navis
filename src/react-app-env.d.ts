@@ -27,9 +27,3 @@ module "*.mp3" {
 interface SVGElement extends Element {
   beginElement(): SVGElement;
 }
-
-interface ImportMeta {
-  env: {
-    VITE_MONACO_VERSION: string;
-  };
-}

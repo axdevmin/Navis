@@ -5,14 +5,28 @@ import { loose } from "../chakra-loose";
 
 const FlexLoose = loose(Flex);
 const BoxLoose = loose(Box);
-import MonacoEditor from "@monaco-editor/react";
-import type * as monacoEditor from "monaco-editor/esm/vs/editor/editor.api";
 import * as Icon from "../feather-icons";
 import { HtmlContainer } from "../dm-area/components/html-container";
 import debounce from "lodash/debounce";
 import { useStaticRef } from "../hooks/use-static-ref";
 import { DraggableWindow, SetWidthHandler } from "../draggable-window";
 import { usePersistedState } from "../hooks/use-persisted-state";
+
+/** Éditeur de texte simple : le markdown s'écrit très bien sans coloration. */
+const Editor = styled.textarea`
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  border: none;
+  outline: none !important;
+  resize: none;
+  background: transparent;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+`;
 
 const WindowContent = styled.div`
   overflow-y: scroll;
@@ -144,11 +158,10 @@ const usePersitedDiceNotesValue = () =>
 
 export const DiceRollNotes: React.FC<{ close: () => void }> = ({ close }) => {
   const [mode, setMode] = React.useState<"read" | "write">("read");
-  const editorRef =
-    React.useRef<monacoEditor.editor.IStandaloneCodeEditor | null>(null);
-  const [content, _setContent] = usePersitedDiceNotesValue();
-  const setContent = useStaticRef(() => debounce(_setContent, 200));
-  const editorOnResizeRef = React.useRef(null as null | (() => void));
+  const [persistedContent, persistContent] = usePersitedDiceNotesValue();
+  // la saisie reste locale ; l'enregistrement suit avec un léger délai
+  const [content, setDraft] = React.useState(persistedContent);
+  const persistLater = useStaticRef(() => debounce(persistContent, 200));
   const setWidthRef = React.useRef<SetWidthHandler | null>(null);
 
   React.useLayoutEffect(() => {
@@ -184,25 +197,13 @@ export const DiceRollNotes: React.FC<{ close: () => void }> = ({ close }) => {
         <FlexLoose maxHeight="100%" height="100%">
           {mode === "write" ? (
             <BoxLoose maxWidth="50%" flex="1">
-              <MonacoEditor
-                language="markdown"
-                options={{
-                  minimap: { enabled: false },
-                  lineNumbers: "off",
-                  wordWrap: "on",
-                  glyphMargin: false,
-                  folding: false,
-                  lineDecorationsWidth: 12,
-                  lineNumbersMinChars: 0,
-                }}
+              <Editor
+                autoFocus
+                spellCheck={false}
                 value={content}
-                onChange={(value) => value !== undefined && setContent(value)}
-                onMount={(editor) => {
-                  editorOnResizeRef.current = () => {
-                    editor.layout();
-                  };
-
-                  editorRef.current = editor;
+                onChange={(ev) => {
+                  setDraft(ev.target.value);
+                  persistLater(ev.target.value);
                 }}
               />
             </BoxLoose>
@@ -219,9 +220,6 @@ export const DiceRollNotes: React.FC<{ close: () => void }> = ({ close }) => {
         ev.stopPropagation();
         if (ev.key !== "Escape") return;
         if (mode === "read") close();
-      }}
-      onDidResize={() => {
-        editorOnResizeRef.current?.();
       }}
     />
   );

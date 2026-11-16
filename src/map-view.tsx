@@ -35,10 +35,7 @@ import type {
 import { useContextBridge } from "./hooks/use-context-bridge";
 import { MapGridEntity, MapTokenEntity, TokenType } from "./map-typings";
 import { useIsKeyPressed } from "./hooks/use-is-key-pressed";
-import {
-  getCanvasPixelRatio,
-  getGraphicsSettings,
-} from "./graphics-quality";
+import { getCanvasPixelRatio, getGraphicsSettings } from "./graphics-quality";
 import * as Icon from "./feather-icons";
 import { TextureLoader } from "three";
 import { ReactEventHandlers } from "react-use-gesture/dist/types";
@@ -50,7 +47,6 @@ import {
   useCreateStore,
   LevaInputs,
 } from "leva";
-import { levaPluginNoteReference } from "./leva-plugin/leva-plugin-note-reference";
 import { levaPluginTokenImage } from "./leva-plugin/leva-plugin-token-image";
 import { defaultFactionForTokenType } from "./dm-area/combat/combat-faction";
 import { mapView_SaveAsLibraryCharacterMutation } from "./__generated__/mapView_SaveAsLibraryCharacterMutation.graphql";
@@ -73,8 +69,10 @@ import { mapView_MapPingSubscription } from "./__generated__/mapView_MapPingSubs
 import { UpdateTokenContext } from "./update-token-context";
 import { IsDungeonMasterContext } from "./is-dungeon-master-context";
 import { WeatherSystem } from "./weather-system";
+import { RenderDemand, RenderScheduler } from "./render-scheduler";
+import { tokenSnapshots } from "./undo-history";
+import { WeatherShelter } from "./map-rooms";
 import type { WeatherSettings } from "./weather-types";
-import { APP_VERSION } from "./version";
 import { DiceRollRenderer } from "./dice-roll-renderer";
 
 type Vector2D = [number, number];
@@ -197,6 +195,14 @@ const TokenListRendererFragment = graphql`
     grid {
       columnWidth
     }
+    combat {
+      isActive
+      currentParticipantId
+      participants {
+        id
+        tokenId
+      }
+    }
   }
 `;
 
@@ -204,6 +210,12 @@ const TokenListRenderer = (props: {
   map: mapView_TokenListRendererFragment$key;
 }) => {
   const map = useFragment(TokenListRendererFragment, props.map);
+  // Token dont c'est le tour dans le combat en cours (s'il est sur la carte).
+  const activeTurnTokenId = map.combat.isActive
+    ? map.combat.participants.find(
+        (participant) => participant.id === map.combat.currentParticipantId
+      )?.tokenId ?? null
+    : null;
   return (
     <group renderOrder={LayerRenderOrder.token}>
       {map.tokens.map((token) => (
@@ -212,6 +224,7 @@ const TokenListRenderer = (props: {
           key={token.id}
           token={token}
           columnWidth={map.grid?.columnWidth ?? null}
+          isActiveTurn={token.id === activeTurnTokenId}
         />
       ))}
     </group>
@@ -238,7 +251,6 @@ const TokenRendererMapTokenFragment = graphql`
       title
       url
     }
-    referenceId
   }
 `;
 
@@ -256,6 +268,8 @@ const TokenRenderer = (props: {
   id: string;
   token: mapView_TokenRendererMapTokenFragment$key;
   columnWidth: number | null;
+  /** C'est le tour de ce token dans le combat en cours. */
+  isActiveTurn: boolean;
 }) => {
   const token = useFragment(TokenRendererMapTokenFragment, props.token);
   const sharedMapState = React.useContext(SharedMapState);
@@ -264,6 +278,29 @@ const TokenRenderer = (props: {
     useMutation<mapView_SaveAsLibraryCharacterMutation>(
       SaveAsLibraryCharacterMutation
     );
+  // Valeurs courantes du token, lues par l'historique annuler / rétablir.
+  React.useEffect(() => {
+    tokenSnapshots.set(props.id, {
+      x: token.x,
+      y: token.y,
+      radius: token.radius,
+      rotation: token.rotation,
+      color: token.color,
+      label: token.label,
+      isLocked: token.isLocked,
+      isVisibleForPlayers: token.isVisibleForPlayers,
+      isMovableByPlayers: token.isMovableByPlayers,
+      tokenType: token.tokenType,
+      isAlive: token.isAlive,
+    });
+  });
+  React.useEffect(
+    () => () => {
+      tokenSnapshots.delete(props.id);
+    },
+    [props.id]
+  );
+
   const pendingChangesRef = React.useRef<TokenPartialChanges>({});
   const enqueueSave = useStaticRef(() =>
     debounce(() => {
@@ -327,7 +364,7 @@ const TokenRenderer = (props: {
       },
       radius: {
         type: LevaInputs.NUMBER,
-        label: "Size",
+        label: "Taille",
         value: token.radius,
         step: 1,
         min: 1,
@@ -363,11 +400,12 @@ const TokenRenderer = (props: {
       radiusOptions: buttonGroup({
         label: null,
         opts: {
-          "0.25x": () => updateRadiusRef.current?.(0.25),
-          "0.5x": () => updateRadiusRef.current?.(0.5),
-          "1x": () => updateRadiusRef.current?.(1),
-          "2x": () => updateRadiusRef.current?.(2),
-          "3x": () => updateRadiusRef.current?.(3),
+          // en nombre de cases de la grille
+          "×½": () => updateRadiusRef.current?.(0.5),
+          "×1": () => updateRadiusRef.current?.(1),
+          "×2": () => updateRadiusRef.current?.(2),
+          "×3": () => updateRadiusRef.current?.(3),
+          "×4": () => updateRadiusRef.current?.(4),
         },
       }),
       rotation: {
@@ -403,7 +441,7 @@ const TokenRenderer = (props: {
       },
       isLocked: {
         type: LevaInputs.BOOLEAN,
-        label: "Position locked",
+        label: "Verrouiller la position",
         value: token.isLocked,
         onChange: (isLocked: boolean, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -417,7 +455,7 @@ const TokenRenderer = (props: {
       },
       text: {
         type: LevaInputs.STRING,
-        label: "Title",
+        label: "Nom",
         value: typeof token.label === "string" ? token.label : "",
         onChange: (label: string, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -431,7 +469,7 @@ const TokenRenderer = (props: {
       },
       color: {
         type: LevaInputs.COLOR,
-        label: "Color",
+        label: "Couleur",
         value: token.color ?? "rgb(255, 255, 255)",
         onChange: (color: string, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -452,7 +490,7 @@ const TokenRenderer = (props: {
       },
       isVisibleForPlayers: {
         type: LevaInputs.BOOLEAN,
-        label: "Visible to players",
+        label: "Visible par les joueurs",
         value: token.isVisibleForPlayers,
         onChange: (isVisibleForPlayers: boolean, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -466,7 +504,7 @@ const TokenRenderer = (props: {
       },
       isMovableByPlayers: {
         type: LevaInputs.BOOLEAN,
-        label: "Movable by players",
+        label: "Déplaçable par les joueurs",
         value: token.isMovableByPlayers,
         onChange: (isMovableByPlayers: boolean, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -478,18 +516,6 @@ const TokenRenderer = (props: {
         },
         transient: false,
       },
-      referenceId: levaPluginNoteReference({
-        value: token.referenceId ?? null,
-        onChange: (referenceId: string | null, _, { initial, fromPanel }) => {
-          if (initial || !fromPanel) {
-            return;
-          }
-          updateToken(props.id, {
-            reference: referenceId ? { type: "note", id: referenceId } : null,
-          });
-        },
-        transient: false,
-      }),
       tokenImageId: levaPluginTokenImage({
         value: token.tokenImage?.id ?? null,
         onChange: (tokenImageId: null | string, _, { initial, fromPanel }) => {
@@ -507,11 +533,11 @@ const TokenRenderer = (props: {
         label: "Type",
         value: token.tokenType ?? "marker",
         options: {
-          "👤 Personnage": "character",
-          "👹 Créature": "creature",
-          "📦 Objet": "object",
-          "⚠️ Danger": "hazard",
-          "📍 Marqueur": "marker",
+          Personnage: "character",
+          Créature: "creature",
+          Objet: "object",
+          Danger: "hazard",
+          Marqueur: "marker",
         },
         onChange: (tokenType: TokenType, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -533,7 +559,7 @@ const TokenRenderer = (props: {
         },
         transient: false,
       },
-      "💾 Enregistrer comme personnage": button(() => {
+      "Enregistrer comme personnage": button(() => {
         saveAsLibraryCharacter({
           variables: {
             input: {
@@ -567,7 +593,6 @@ const TokenRenderer = (props: {
       isLocked: token.isLocked,
       isMovableByPlayers: token.isMovableByPlayers,
       isVisibleForPlayers: token.isVisibleForPlayers,
-      referenceId: token.referenceId,
       tokenImageId: token.tokenImage?.id ?? null,
       tokenType: token.tokenType ?? "marker",
       isAlive: token.isAlive ?? true,
@@ -597,7 +622,6 @@ const TokenRenderer = (props: {
     token.color,
     token.isMovableByPlayers,
     token.isVisibleForPlayers,
-    token.referenceId,
     token.tokenImage?.id,
     token.rotation,
     token.tokenType,
@@ -638,6 +662,53 @@ const TokenRenderer = (props: {
   const showContextMenu = useShowContextMenu();
   const [initMarkArea, cancelMarkArea] = useMarkArea();
   const tokenSelection = useTokenSelection(props.id);
+
+  // Redimensionnement rapide au clavier du ou des tokens sélectionnés :
+  // « + » agrandit, « - » réduit (par pas de 15 %).
+  const currentRadiusRef = React.useRef(token.radius);
+  React.useEffect(() => {
+    currentRadiusRef.current = token.radius;
+  }, [token.radius]);
+  const isSelectedForResize = isDungeonMaster && tokenSelection.isSelected;
+  React.useEffect(() => {
+    if (!isSelectedForResize) {
+      return;
+    }
+    const listener = (ev: KeyboardEvent) => {
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) {
+        return;
+      }
+      const target = ev.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const factor =
+        ev.key === "+" || ev.key === "="
+          ? 1.15
+          : ev.key === "-" || ev.key === "_"
+          ? 1 / 1.15
+          : null;
+      if (factor === null) {
+        return;
+      }
+      ev.preventDefault();
+      const radius = Math.max(
+        1,
+        Math.round(currentRadiusRef.current * factor * 10) / 10
+      );
+      currentRadiusRef.current = radius;
+      setValues({ radius });
+      updateToken(props.id, { radius });
+    };
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, [isSelectedForResize, props.id, setValues, updateToken]);
 
   const firstTimeStamp = React.useRef<null | number>(null);
 
@@ -885,6 +956,30 @@ const TokenRenderer = (props: {
           />
         </mesh>
         {/* Selection highlight */}
+        {props.isActiveTurn ? (
+          // halo du tour en cours : un anneau laiton net, doublé d'une lueur
+          <>
+            <mesh renderOrder={LayerRenderOrder.outline}>
+              <ringBufferGeometry
+                attach="geometry"
+                args={[initialRadius * 1.3, initialRadius * 1.44, 128]}
+              />
+              <meshBasicMaterial attach="material" color="#e3b565" />
+            </mesh>
+            <mesh renderOrder={LayerRenderOrder.outline}>
+              <ringBufferGeometry
+                attach="geometry"
+                args={[initialRadius * 1.44, initialRadius * 1.8, 128]}
+              />
+              <meshBasicMaterial
+                attach="material"
+                color="#e3b565"
+                transparent
+                opacity={0.28}
+              />
+            </mesh>
+          </>
+        ) : null}
         {tokenSelection.isSelected ? (
           <mesh renderOrder={LayerRenderOrder.outline}>
             <ringBufferGeometry
@@ -1237,17 +1332,18 @@ const TextureElement = (props: {
 //   );
 // };
 
-const MarkedAreaRenderer: React.FC<{
-  x: number;
-  y: number;
-  factor: number;
-  dimensions: Dimensions;
-  remove: () => void;
-  radius: number;
-}> = (props) => {
-  const sharedMapState = React.useContext(SharedMapState);
-  const initialRadius = 10 * props.factor;
+/** Nombre d'ondes d'un signal et décalage entre elles. */
+const PING_RING_COUNT = 3;
+const PING_RING_DELAY_MS = 450;
+const PING_RING_DURATION_MS = 1800;
 
+const MarkedAreaRing = (props: {
+  position: [number, number, number];
+  initialRadius: number;
+  radius: number;
+  delay: number;
+  onRest?: () => void;
+}) => {
   const spring = useSpring({
     from: {
       scale: [1, 1, 1] as [number, number, number],
@@ -1261,42 +1357,75 @@ const MarkedAreaRenderer: React.FC<{
       ],
       opacity: 0,
     },
+    delay: props.delay,
     config: {
-      duration: 2000,
+      duration: PING_RING_DURATION_MS,
     },
-    onRest: () => {
-      props.remove();
-    },
+    onRest: props.onRest,
   });
 
   return (
     <animated.mesh
       scale={spring.scale}
-      position={[
-        calculateX(
-          props.x,
-          props.factor * sharedMapState.ratio,
-          props.dimensions.width
-        ),
-        calculateY(
-          props.y,
-          props.factor * sharedMapState.ratio,
-          props.dimensions.height
-        ),
-        0,
-      ]}
+      position={props.position}
+      renderOrder={LayerRenderOrder.marker}
     >
       <ringBufferGeometry
         attach="geometry"
-        args={[initialRadius * (1 - 0.05), initialRadius, 128]}
+        args={[props.initialRadius * 0.82, props.initialRadius, 96]}
       />
       <AnimatedMeshStandardMaterial
         attach="material"
-        color={"red"}
+        color={"#ff3b30"}
         transparent
         opacity={spring.opacity}
       />
     </animated.mesh>
+  );
+};
+
+/**
+ * Signal (« ping ») : trois ondes successives, bien visibles sur une TV,
+ * à l'endroit pointé par le MJ ou par un joueur.
+ */
+const MarkedAreaRenderer: React.FC<{
+  x: number;
+  y: number;
+  factor: number;
+  dimensions: Dimensions;
+  remove: () => void;
+  radius: number;
+}> = (props) => {
+  const sharedMapState = React.useContext(SharedMapState);
+  const initialRadius = 10 * props.factor;
+  const position: [number, number, number] = [
+    calculateX(
+      props.x,
+      props.factor * sharedMapState.ratio,
+      props.dimensions.width
+    ),
+    calculateY(
+      props.y,
+      props.factor * sharedMapState.ratio,
+      props.dimensions.height
+    ),
+    0,
+  ];
+
+  return (
+    <>
+      {Array.from({ length: PING_RING_COUNT }, (_, index) => (
+        <MarkedAreaRing
+          key={index}
+          position={position}
+          initialRadius={initialRadius}
+          radius={props.radius}
+          delay={index * PING_RING_DELAY_MS}
+          // le signal disparaît quand la dernière onde s'est éteinte
+          onRest={index === PING_RING_COUNT - 1 ? props.remove : undefined}
+        />
+      ))}
+    </>
   );
 };
 
@@ -1742,6 +1871,11 @@ export type MapControlInterface = {
 const MapViewRendererFragment = graphql`
   fragment mapView_MapViewRendererFragment on Map {
     mediaType
+    rooms {
+      id
+      points
+      hasWeather
+    }
     ...mapView_MapRendererFragment
   }
 `;
@@ -2158,13 +2292,19 @@ const MapViewRenderer = (props: {
             handlerContext={toolContext}
           />
         ) : null}
-        <WeatherSystem
-          config={props.weatherConfig}
-          dimensions={{
-            width: dimensions.width,
-            height: dimensions.height,
-          }}
-        />
+        <WeatherShelter
+          rooms={map.rooms}
+          toScene={toolContext.helper.imageCoordinatesToThreePoint}
+          renderOrder={LayerRenderOrder.weather - 0.5}
+        >
+          <WeatherSystem
+            config={props.weatherConfig}
+            dimensions={{
+              width: dimensions.width,
+              height: dimensions.height,
+            }}
+          />
+        </WeatherShelter>
       </Plane>
       <DiceRollRenderer mapId={props.mapId} />
     </SharedMapState.Provider>
@@ -2175,21 +2315,6 @@ const MapCanvasContainer = styled.div`
   position: relative;
   height: 100%;
   touch-action: manipulation;
-`;
-
-const VersionBadge = styled.div`
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 100;
-  background: rgba(0, 0, 0, 0.55);
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 10px;
-  font-family: monospace;
-  padding: 2px 6px;
-  border-radius: 3px;
-  pointer-events: none;
-  user-select: none;
 `;
 
 const YouTubeIframe = styled.iframe`
@@ -2404,8 +2529,22 @@ export const MapView = (props: {
     ? toYouTubeEmbedUrl(map.mapImageUrl)
     : null;
 
+  // Ce que la scène exige quand personne n'y touche (voir RenderScheduler).
+  const weatherType =
+    (map.weatherSettings as WeatherSettings | null)?.type ?? "none";
+  const renderDemand: RenderDemand =
+    weatherType !== "none" || (isAnimatedMedia && isAnimating)
+      ? "continuous"
+      : isDungeonMaster
+      ? // le brouillard du MJ est statique : rien à redessiner au repos
+        "idle"
+      : // le brouillard des joueurs dérive lentement : 30 images/s suffisent
+        "slow";
+
   const canvasContent = (
     <Canvas
+      // Rendu à la demande : c'est RenderScheduler qui décide quand dessiner.
+      invalidateFrameloop
       camera={{ position: [0, 0, 5] }}
       // Capped so a high density screen, or a TV box reporting a ratio above 1,
       // does not multiply the number of pixels to shade every frame.
@@ -2447,6 +2586,7 @@ export const MapView = (props: {
       }}
     >
       <ambientLight intensity={1} />
+      <RenderScheduler demand={renderDemand} />
       <ContextBridge>
         <MapViewRenderer
           key={map.id}
@@ -2503,7 +2643,6 @@ export const MapView = (props: {
 
   return mapImage || mapVideo ? (
     <MapCanvasContainer>
-      {isDungeonMaster ? <VersionBadge>v{APP_VERSION}</VersionBadge> : null}
       {canvasContent}
       {isAnimatedMedia && (
         <AnimationToggleButton

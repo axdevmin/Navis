@@ -37,7 +37,6 @@ const CodeLoose = loose(Code);
 const PopoverContentLoose = loose(PopoverContent);
 const PopoverBodyLoose = loose(PopoverBody);
 const PopoverHeaderLoose = loose(PopoverHeader);
-import { useNoteWindowActions } from "../dm-area/token-info-aside";
 import { SharableImage } from "../dm-area/components/sharable-image";
 import * as Icon from "../feather-icons";
 import * as Button from "../button";
@@ -226,7 +225,6 @@ const ChatMessage_SharedResourceChatMessageFragment = graphql`
       ... on Note {
         __typename
         id
-        documentId
         title
         contentPreview
       }
@@ -255,34 +253,6 @@ const NoteBody = styled.div`
   padding-top: 0;
 `;
 
-const NoteFooter = styled.div`
-  padding: 8px;
-`;
-
-const NotePreview: React.FC<{
-  documentId: string;
-  title: string;
-  contentPreview: string;
-}> = ({ documentId, title, contentPreview }) => {
-  const noteWindowActions = useNoteWindowActions();
-  return (
-    <NoteCard>
-      <NoteTitle>{title}</NoteTitle>
-      <NoteBody>{contentPreview}</NoteBody>
-      <NoteFooter>
-        <Button.Primary
-          small
-          onClick={() =>
-            noteWindowActions.focusOrShowNoteInNewWindow(documentId)
-          }
-        >
-          Show
-        </Button.Primary>
-      </NoteFooter>
-    </NoteCard>
-  );
-};
-
 const SharedResourceRenderer: React.FC<{
   message: chatMessage_SharedResourceChatMessageFragment$key;
 }> = ({ message: messageKey }) => {
@@ -297,11 +267,10 @@ const SharedResourceRenderer: React.FC<{
     switch (message.resource.__typename) {
       case "Note":
         resourceContent = (
-          <NotePreview
-            documentId={message.resource.documentId}
-            title={message.resource.title}
-            contentPreview={message.resource.contentPreview}
-          />
+          <NoteCard>
+            <NoteTitle>{message.resource.title}</NoteTitle>
+            <NoteBody>{message.resource.contentPreview}</NoteBody>
+          </NoteCard>
         );
         break;
       case "Image":

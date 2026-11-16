@@ -9,6 +9,8 @@ import {
   LIBRARY_CHARACTER_DRAG_TYPE,
   LibraryCharacterDragPayload,
 } from "./library/library-character-drag-type";
+import { ds } from "../design-system";
+import { floatingSurface } from "../ui";
 import { tokenLibrary_Query } from "./__generated__/tokenLibrary_Query.graphql";
 
 const TokenLibraryQuery = graphql`
@@ -42,9 +44,12 @@ export type TokenPreset = {
   imageUrl: string;
 };
 
-const LIBRARY: Array<{ category: string; tokens: TokenPreset[] }> = [
+export const TOKEN_PRESET_LIBRARY: Array<{
+  category: string;
+  tokens: TokenPreset[];
+}> = [
   {
-    category: "Personnages",
+    category: "Classes",
     tokens: [
       {
         label: "Guerrier",
@@ -236,37 +241,31 @@ const LIBRARY: Array<{ category: string; tokens: TokenPreset[] }> = [
 export const LIBRARY_DRAG_TYPE = "application/navis-token-preset";
 
 const PanelContainer = styled.div`
-  background: #1a1a2e;
-  border: 1px solid #333366;
-  border-radius: 8px;
-  width: 280px;
+  ${floatingSurface}
+  background: ${ds.colors.surface};
+  width: 292px;
   max-height: 480px;
   overflow-y: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
   user-select: none;
 `;
 
 const PanelHeader = styled.div`
   padding: 10px 14px 8px;
   font-size: 13px;
-  font-weight: 700;
-  color: #aaaadd;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  border-bottom: 1px solid #2a2a4a;
+  font-weight: 600;
+  color: #f2f2f2;
+  border-bottom: 1px solid ${ds.colors.border};
   position: sticky;
   top: 0;
-  background: #1a1a2e;
+  background: ${ds.colors.surface};
   z-index: 1;
 `;
 
 const CategoryTitle = styled.div`
   padding: 8px 14px 4px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #7777aa;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6c6c72;
 `;
 
 const TokenGrid = styled.div`
@@ -282,24 +281,24 @@ const TokenButton = styled.button<{ typeColor: string }>`
   align-items: center;
   gap: 4px;
   padding: 6px 4px 5px;
-  background: #12122a;
-  border: 2px solid ${(p) => p.typeColor};
-  border-radius: 8px;
+  background: transparent;
+  border: none;
+  border-radius: ${ds.radii.md};
   cursor: grab;
-  transition: background 0.15s, transform 0.1s;
-  color: #ddddff;
-  font-size: 10px;
+  transition: background ${ds.transitions.fast};
+  color: ${ds.colors.textSecondary};
+  font-size: 11px;
   line-height: 1.2;
   text-align: center;
   word-break: break-word;
 
   &:hover {
-    background: #1e1e3e;
-    transform: scale(1.04);
+    background: ${ds.colors.hover};
+    color: ${ds.colors.textPrimary};
   }
 
   &:active {
-    transform: scale(0.96);
+    background: ${ds.colors.selected};
     cursor: grabbing;
   }
 `;
@@ -339,7 +338,10 @@ export const TokenLibrary = () => {
     ev: React.DragEvent<HTMLButtonElement>,
     payload: LibraryCharacterDragPayload
   ) => {
-    ev.dataTransfer.setData(LIBRARY_CHARACTER_DRAG_TYPE, JSON.stringify(payload));
+    ev.dataTransfer.setData(
+      LIBRARY_CHARACTER_DRAG_TYPE,
+      JSON.stringify(payload)
+    );
     ev.dataTransfer.effectAllowed = "copy";
   };
 
@@ -348,7 +350,7 @@ export const TokenLibrary = () => {
       <PanelHeader>Bibliothèque de tokens</PanelHeader>
       {data && data.libraryCharacters.length > 0 ? (
         <React.Fragment>
-          <CategoryTitle>Personnages</CategoryTitle>
+          <CategoryTitle>Mes personnages</CategoryTitle>
           <TokenGrid>
             {data.libraryCharacters.map((character) => {
               const faction = getFactionMeta(character.faction);
@@ -384,7 +386,7 @@ export const TokenLibrary = () => {
           </TokenGrid>
         </React.Fragment>
       ) : null}
-      {LIBRARY.map((section) => (
+      {TOKEN_PRESET_LIBRARY.map((section) => (
         <React.Fragment key={section.category}>
           <CategoryTitle>{section.category}</CategoryTitle>
           <TokenGrid>

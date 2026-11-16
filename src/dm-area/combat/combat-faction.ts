@@ -5,9 +5,9 @@ export const FACTION_META: Record<
   CombatFaction,
   { label: string; color: string; emoji: string }
 > = {
-  hero: { label: "Héros", color: ds.colors.accent, emoji: "🛡" },
-  enemy: { label: "Ennemi", color: ds.colors.danger, emoji: "👹" },
-  neutral: { label: "Neutre", color: "#d4a94e", emoji: "➖" },
+  hero: { label: "Héros", color: ds.colors.accent, emoji: "H" },
+  enemy: { label: "Ennemi", color: ds.colors.danger, emoji: "E" },
+  neutral: { label: "Neutre", color: "#d4a94e", emoji: "N" },
 };
 
 export const FACTION_ORDER: Array<CombatFaction> = ["hero", "enemy", "neutral"];

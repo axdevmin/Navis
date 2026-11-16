@@ -7,6 +7,7 @@ import type { WeatherType } from "../weather-types";
 import { weatherControls_MapFragment$key } from "./__generated__/weatherControls_MapFragment.graphql";
 import { weatherControls_mapUpdateWeatherMutation } from "./__generated__/weatherControls_mapUpdateWeatherMutation.graphql";
 import { ds } from "../design-system";
+import * as Icon from "../feather-icons";
 
 const WeatherControlsMapFragment = graphql`
   fragment weatherControls_MapFragment on Map {
@@ -19,7 +20,7 @@ const WeatherControlsMapFragment = graphql`
   }
 `;
 
-const MapUpdateWeatherMutation = graphql`
+export const MapUpdateWeatherMutation = graphql`
   mutation weatherControls_mapUpdateWeatherMutation(
     $input: MapUpdateWeatherInput!
   ) {
@@ -38,41 +39,65 @@ const MapUpdateWeatherMutation = graphql`
 type WeatherOption = {
   type: WeatherType;
   label: string;
-  emoji: string;
+  icon: typeof Icon.Cloud;
 };
 
-const WEATHER_OPTIONS: WeatherOption[] = [
-  { type: "none", label: "Aucun", emoji: "—" },
-  { type: "sun", label: "Soleil", emoji: "☀️" },
-  { type: "cloudy", label: "Nuageux", emoji: "⛅" },
-  { type: "rain", label: "Pluie", emoji: "🌧️" },
-  { type: "storm", label: "Orage", emoji: "⛈️" },
-  { type: "snow", label: "Neige", emoji: "❄️" },
-  { type: "wind", label: "Vent", emoji: "💨" },
-  { type: "moon", label: "Lune", emoji: "🌙" },
+export const WEATHER_OPTIONS: WeatherOption[] = [
+  { type: "none", label: "Aucune", icon: Icon.Slash },
+  { type: "sun", label: "Soleil", icon: Icon.Sun },
+  { type: "cloudy", label: "Nuageux", icon: Icon.Cloud },
+  { type: "rain", label: "Pluie", icon: Icon.CloudRain },
+  { type: "storm", label: "Orage", icon: Icon.CloudLightning },
+  { type: "snow", label: "Neige", icon: Icon.CloudSnow },
+  { type: "wind", label: "Vent", icon: Icon.Wind },
+  { type: "moon", label: "Nuit", icon: Icon.Moon },
 ];
 
+type WeatherValues = {
+  type: string;
+  intensity: number;
+  windAngle: number;
+};
+
+/**
+ * Réglages à appliquer quand on passe à un autre type de météo : le second
+ * curseur change de sens selon le type, d'où une valeur de départ adaptée.
+ */
+export const getWeatherPatchForType = (
+  current: WeatherValues,
+  type: WeatherType
+): { type: WeatherType; windAngle?: number } => ({
+  type,
+  ...(type === current.type
+    ? {}
+    : type === "moon"
+    ? { windAngle: 0.7 }
+    : type === "cloudy"
+    ? { windAngle: 0.6 }
+    : type === "wind"
+    ? { windAngle: -30 }
+    : {}),
+});
+
 const Container = styled.div`
-  padding: 14px;
-  min-width: 240px;
+  padding: 12px;
+  min-width: 292px;
   display: flex;
   flex-direction: column;
   gap: 14px;
 `;
 
 const Title = styled.div`
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: ${ds.colors.textMuted};
+  color: ${ds.colors.textPrimary};
   font-family: ${ds.font.sans};
 `;
 
 const WeatherGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
 `;
 
 const WeatherBtn = styled.button<{ isActive: boolean }>`
@@ -80,29 +105,22 @@ const WeatherBtn = styled.button<{ isActive: boolean }>`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 10px 6px 8px;
+  gap: 6px;
+  height: 56px;
   border-radius: ${ds.radii.md};
-  border: 1px solid
-    ${(p) => (p.isActive ? ds.colors.accentBorder : ds.colors.border)};
-  background: ${(p) =>
-    p.isActive ? ds.colors.accentMuted : "rgba(255,255,255,0.03)"};
+  border: none;
+  background: ${(p) => (p.isActive ? ds.colors.accentMuted : "transparent")};
   color: ${(p) => (p.isActive ? ds.colors.accent : ds.colors.textSecondary)};
   cursor: pointer;
   font-family: ${ds.font.sans};
-  font-size: 11px;
-  font-weight: ${(p) => (p.isActive ? "600" : "400")};
-  transition: all ${ds.transitions.fast};
-
-  span.emoji {
-    font-size: 18px;
-    line-height: 1;
-  }
+  font-size: 12px;
+  font-weight: 500;
+  transition: background ${ds.transitions.fast}, color ${ds.transitions.fast};
 
   &:hover {
-    background: ${ds.colors.surfaceHover};
-    border-color: ${ds.colors.borderStrong};
-    color: ${ds.colors.textPrimary};
+    background: ${(p) =>
+      p.isActive ? ds.colors.accentMuted : ds.colors.hover};
+    color: ${(p) => (p.isActive ? ds.colors.accent : ds.colors.textPrimary)};
   }
 `;
 
@@ -166,20 +184,9 @@ export const WeatherControls = (props: {
             <WeatherBtn
               key={opt.type}
               isActive={weather.type === opt.type}
-              onClick={() =>
-                apply({
-                  type: opt.type,
-                  ...(opt.type === "moon" && weather.type !== "moon"
-                    ? { windAngle: 0.7 }
-                    : opt.type === "cloudy" && weather.type !== "cloudy"
-                    ? { windAngle: 0.6 }
-                    : opt.type === "wind" && weather.type !== "wind"
-                    ? { windAngle: -30 }
-                    : {}),
-                })
-              }
+              onClick={() => apply(getWeatherPatchForType(weather, opt.type))}
             >
-              <span className="emoji">{opt.emoji}</span>
+              <opt.icon boxSize="18px" />
               <span>{opt.label}</span>
             </WeatherBtn>
           ))}

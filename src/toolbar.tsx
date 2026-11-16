@@ -1,148 +1,171 @@
 import React, { useMemo, useEffect } from "react";
 import styled from "@emotion/styled/macro";
-import type { ReactEventHandlers } from "react-use-gesture/dist/types";
 import { ds } from "./design-system";
+import { controlBase, floatingSurface } from "./ui";
 
+/**
+ * Barre d'outils flottante.
+ *
+ * - verticale (rail)   : boutons carrés à icône seule ; le libellé du bouton
+ *   (`Icon.Label`) devient son infobulle ;
+ * - horizontale (dock) : icône + libellé côte à côte, sur une ligne.
+ */
 const ToolbarContext = React.createContext({
   horizontal: false,
   transparent: false,
 });
 
-const ToolbarBase = styled.div<{ horizontal?: boolean; transparent?: boolean }>`
+const ToolbarBase = styled.div<{ horizontal?: boolean }>`
+  ${floatingSurface}
   pointer-events: all;
-  border-radius: ${ds.radii.xl};
-  text-align: center;
-  width: ${(p) => (p.horizontal ? "max-content" : "57px")};
-  height: ${(p) => (p.horizontal ? "44px" : "max-content")};
-  display: ${(p) => (p.horizontal ? "flex" : null)};
-  align-items: ${(p) => (p.horizontal ? "center" : null)};
-
-  background: ${(p) =>
-    p.transparent ? ds.colors.glassDark : ds.colors.surface};
-  backdrop-filter: ${(p) => (p.transparent ? ds.blur.md : "none")};
-  -webkit-backdrop-filter: ${(p) => (p.transparent ? ds.blur.md : "none")};
-  border: 1px solid
-    ${(p) => (p.transparent ? ds.colors.borderStrong : ds.colors.border)};
-  box-shadow: ${ds.shadows.lg};
-
-  > :last-child {
-    border-top-right-radius: ${(p) => (p.horizontal ? ds.radii.xl : null)};
-    border-top-left-radius: 0;
-    border-bottom-right-radius: ${ds.radii.xl};
-    border-bottom-left-radius: ${(p) => (p.horizontal ? null : ds.radii.xl)};
-  }
-
-  > :first-child {
-    border-top-right-radius: ${(p) => (p.horizontal ? null : ds.radii.xl)};
-    border-top-left-radius: ${ds.radii.xl};
-    border-bottom-left-radius: ${(p) => (p.horizontal ? ds.radii.xl : null)};
-  }
+  display: flex;
+  flex-direction: ${(p) => (p.horizontal ? "row" : "column")};
+  /* sur petit écran le dock passe sur deux lignes plutôt que de déborder */
+  flex-wrap: ${(p) => (p.horizontal ? "wrap" : "nowrap")};
+  justify-content: center;
+  align-items: ${(p) => (p.horizontal ? "center" : "stretch")};
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+  gap: 5px;
 `;
 
 const ToolbarGroup = styled.ul<{
   horizontal?: boolean;
-  vertical?: boolean;
   divider?: boolean;
-  transparent?: boolean;
 }>`
-  display: ${(p) => (p.horizontal ? "flex" : "block")};
+  display: flex;
+  flex-direction: ${(p) => (p.horizontal ? "row" : "column")};
+  gap: 2px;
   margin: 0;
   padding: 0;
-  padding-bottom: ${(p) => (!p.horizontal ? "4px" : null)};
-  border-bottom: ${(p) =>
-    p.divider && !p.vertical ? `1px solid ${ds.colors.border}` : null};
-  border-right: ${(p) =>
-    p.horizontal && p.vertical ? `1px solid ${ds.colors.border}` : null};
   list-style: none;
-  background-color: transparent;
 
-  &:first-of-type {
-    padding-left: ${(p) => (p.horizontal ? "8px" : null)};
-  }
+  ${(p) =>
+    p.divider
+      ? p.horizontal
+        ? `padding-right: 5px; border-right: 1px solid ${ds.colors.border};`
+        : `padding-bottom: 5px; border-bottom: 1px solid ${ds.colors.border};`
+      : ""}
 `;
 
 const ToolbarItem = styled.li<{
   horizontal?: boolean;
-  isEnabled?: boolean;
   isActive?: boolean;
-  transparent?: boolean;
+  isOpen?: boolean;
+  hasIndicator?: boolean;
 }>`
   position: relative;
-  flex: ${(p) => (p.horizontal ? "1" : null)};
-  min-width: ${(p) => (p.horizontal ? "60px" : null)};
-  padding-top: ${(p) => (p.horizontal ? "0" : "10px")};
-  padding-right: ${(p) => (p.horizontal ? "6px" : "0")};
-  height: ${(p) => (p.horizontal ? "44px" : "auto")};
-
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-
-  > :nth-child(2) {
-    margin-top: 3px;
-  }
-
-  color: ${(p) => {
-    if (p.isActive || p.isEnabled) return ds.colors.accent;
-    return ds.colors.textMuted;
-  }};
-
-  transition: color ${ds.transitions.fast};
-
-  &:last-child {
-    margin-right: 0;
-  }
 
   > button {
-    height: ${(p) => (p.horizontal ? "44px" : "auto")};
-    transition: transform ${ds.transitions.fast};
+    color: ${(p) =>
+      p.isActive
+        ? ds.colors.accent
+        : p.isOpen
+        ? ds.colors.textPrimary
+        : ds.colors.textSecondary};
+    background: ${(p) =>
+      p.isActive
+        ? ds.colors.accentMuted
+        : p.isOpen
+        ? ds.colors.selected
+        : "transparent"};
+  }
 
-    &:hover {
-      transform: scale(1.05);
+  > button:hover {
+    color: ${(p) =>
+      p.isActive ? ds.colors.accentHover : ds.colors.textPrimary};
+    background: ${(p) =>
+      p.isActive
+        ? ds.colors.accentMuted
+        : p.isOpen
+        ? ds.colors.selected
+        : ds.colors.hover};
+  }
+
+  /* pastille : « cet état est en cours » (météo active, combat en cours…) */
+  ${(p) =>
+    p.hasIndicator
+      ? `
+    > button::after {
+      content: "";
+      position: absolute;
+      top: 5px;
+      left: 21px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: ${ds.colors.accent};
+    }`
+      : ""}
+
+  /* rail : le libellé est une infobulle à droite du bouton */
+  ${(p) =>
+    p.horizontal
+      ? `
+    @media (max-width: 720px) {
+      > button { padding: 0 9px; }
+      > button > [data-toolbar-label],
+      > button > span:last-of-type { display: none; }
+    }`
+      : `
+    > button {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      justify-content: center;
     }
-  }
 
-  svg {
-    stroke: ${(p) => {
-      if (p.isActive || p.isEnabled) return ds.colors.accent;
-      return ds.colors.textMuted;
-    }};
-    transition: stroke ${ds.transitions.fast};
-  }
+    > button > [data-toolbar-label] {
+      position: absolute;
+      left: calc(100% + 12px);
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: ${ds.radii.sm};
+      background: ${ds.colors.surfaceActive};
+      border: 1px solid ${ds.colors.borderStrong};
+      box-shadow: ${ds.shadows.md};
+      color: ${ds.colors.textPrimary};
+      font-size: 12px;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      z-index: 5;
+      transition: opacity ${ds.transitions.fast};
+    }
 
-  &:hover svg {
-    stroke: ${ds.colors.textPrimary};
-  }
+    > button:hover > [data-toolbar-label],
+    > button:focus-visible > [data-toolbar-label] {
+      opacity: 1;
+      visibility: visible;
+      transition-delay: 0.3s;
+    }
+
+    @media (hover: none) {
+      > button > [data-toolbar-label],
+      > button > span:last-of-type { display: none; }
+    }`}
 `;
 
 const ToolboxButton = styled.button`
-  display: block;
-  width: 100%;
-  padding: 0;
-  cursor: pointer;
-  border: none;
-  background-color: transparent;
-  color: inherit;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  > :nth-child(2) {
-    margin-top: 3px;
-  }
+  ${controlBase}
+  position: relative;
+  flex-shrink: 0;
 `;
 
 const ToolbarItemPopupContainer = styled.div<{ horizontal?: boolean }>`
+  ${floatingSurface}
   position: absolute;
-  box-shadow: ${ds.shadows.lg};
-  border-radius: ${ds.radii.lg};
-  background-color: ${ds.colors.surface};
-  border: 1px solid ${ds.colors.border};
-  top: ${(p) => (p.horizontal ? null : `0`)};
-  bottom: ${(p) => (p.horizontal ? `52px` : null)};
-  left: ${(p) => (p.horizontal ? `-12px` : `52px`)};
-  filter: none;
+  text-align: left;
+  top: ${(p) => (p.horizontal ? null : `-6px`)};
+  bottom: ${(p) => (p.horizontal ? `calc(100% + 12px)` : null)};
+  left: ${(p) => (p.horizontal ? `-6px` : `calc(100% + 12px)`)};
   min-width: 200px;
   z-index: 100;
   overflow: visible;
@@ -185,72 +208,54 @@ export const Toolbar: ToolbarType = ({
 
   return (
     <ToolbarContext.Provider value={contextValue}>
-      <ToolbarBase horizontal={horizontal} transparent={transparent} {...props}>
+      <ToolbarBase horizontal={horizontal} {...props}>
         {children}
       </ToolbarBase>
     </ToolbarContext.Provider>
   );
 };
 
-const ToolbarLogo = styled.div<{
-  horizontal?: boolean;
-  transparent?: boolean;
-  cursor?: string;
-}>`
-  width: 100%;
-  height: 44px;
-  background: ${(p) =>
-    p.transparent ? "rgba(96,165,250,0.12)" : ds.colors.accentMuted};
-  border-bottom: 1px solid ${ds.colors.accentBorder};
+/** Poignée carrée en tête de barre (replier / déplier côté joueur). */
+const ToolbarLogo = styled.div<{ cursor?: string }>`
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: ${ds.radii.md};
   display: flex;
   justify-content: center;
   align-items: center;
   font-size: 16px;
-  font-weight: bold;
-  color: ${ds.colors.accent};
+  color: ${ds.colors.textSecondary};
   font-family: ${ds.font.brand};
-  line-height: 2;
   cursor: ${(props) => props.cursor};
-  transition: background ${ds.transitions.fast};
+  transition: background ${ds.transitions.fast}, color ${ds.transitions.fast};
 
   > span {
     transform: translateY(18%);
+    color: ${ds.colors.accent};
   }
 
   &:hover {
-    background: rgba(96, 165, 250, 0.2);
-  }
-
-  &:last-child {
-    border-top-right-radius: ${(p) => (p.horizontal ? ds.radii.xl : null)};
-    border-bottom-right-radius: ${(p) => (p.horizontal ? ds.radii.xl : null)};
-    border-top-left-radius: ${(p) => (p.horizontal ? ds.radii.xl : null)};
-    border-bottom-left-radius: ${(p) => (p.horizontal ? ds.radii.xl : null)};
+    background: ${ds.colors.hover};
+    color: ${ds.colors.textPrimary};
   }
 `;
 
-const Logo: React.FC<{
-  cursor?: string & ReactEventHandlers;
-}> = ({ children, ...props }) => {
-  const { horizontal, transparent } = React.useContext(ToolbarContext);
-  return (
-    <ToolbarLogo horizontal={horizontal} transparent={transparent} {...props}>
-      {children ?? <span>N</span>}
-    </ToolbarLogo>
-  );
+const Logo: React.FC<
+  { cursor?: string } & Pick<
+    React.ComponentProps<"div">,
+    "onClick" | "title" | "role"
+  >
+> = ({ children, ...props }) => {
+  return <ToolbarLogo {...props}>{children ?? <span>N</span>}</ToolbarLogo>;
 };
 
 const Group: React.FC<
   Pick<React.ComponentProps<"div">, "style"> & { divider?: boolean }
 > = ({ children, style, divider, ...props }) => {
-  const { horizontal, transparent } = React.useContext(ToolbarContext);
+  const { horizontal } = React.useContext(ToolbarContext);
   return (
-    <ToolbarGroup
-      horizontal={horizontal}
-      divider={divider}
-      transparent={transparent}
-      {...props}
-    >
+    <ToolbarGroup horizontal={horizontal} divider={divider} {...props}>
       {children}
     </ToolbarGroup>
   );
@@ -258,16 +263,24 @@ const Group: React.FC<
 
 const Item = React.forwardRef<
   HTMLLIElement,
-  Exclude<React.ComponentProps<"li">, "style"> & { isActive?: boolean }
->(({ children, isActive, style, ...props }, ref) => {
-  const { horizontal, transparent } = React.useContext(ToolbarContext);
+  Exclude<React.ComponentProps<"li">, "style"> & {
+    /** Choix exclusif sélectionné (outil courant) : seul état en laiton. */
+    isActive?: boolean;
+    /** Le panneau de ce bouton est ouvert. */
+    isOpen?: boolean;
+    /** Un état est en cours derrière ce bouton (pastille). */
+    hasIndicator?: boolean;
+  }
+>(({ children, isActive, isOpen, hasIndicator, style, ...props }, ref) => {
+  const { horizontal } = React.useContext(ToolbarContext);
 
   return (
     <ToolbarItem
       {...props}
       horizontal={horizontal}
       isActive={isActive}
-      transparent={transparent}
+      isOpen={isOpen}
+      hasIndicator={hasIndicator}
       ref={ref}
     >
       {children}

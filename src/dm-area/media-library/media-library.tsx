@@ -1,4 +1,6 @@
 import * as React from "react";
+import { ds } from "../../design-system";
+import { LibraryHeader } from "../library/library-tabs";
 import { Modal, ModalDialogSize } from "../../modal";
 import * as Icon from "../../feather-icons";
 import * as Button from "../../button";
@@ -23,6 +25,11 @@ import { CharacterLibraryTab } from "../library/character-library-tab";
 type MediaLibraryProps = {
   onClose: () => void;
   mapId: string | null;
+  initialTab: "characters" | "images";
+  /** Revenir au rayon des cartes. */
+  onSelectMaps: () => void;
+  /** Où poser un token ajouté depuis la bibliothèque (coordonnées image). */
+  getDropPoint: () => [number, number];
 };
 
 type MediaLibraryItem = {
@@ -152,9 +159,12 @@ const initialState: MediaLibraryState = {
 export const MediaLibrary: React.FC<MediaLibraryProps> = ({
   onClose,
   mapId,
+  initialTab,
+  onSelectMaps,
+  getDropPoint,
 }) => {
   const [activeTab, setActiveTab] = React.useState<"characters" | "images">(
-    "characters"
+    initialTab
   );
   const [state, dispatch] = React.useReducer(stateReducer, initialState);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
@@ -352,43 +362,19 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({
       <Content
         onClick={(ev) => ev.stopPropagation()}
         tabIndex={1}
-        style={{ maxWidth: 1600 }}
+        style={{ maxWidth: 1024 }}
       >
-        <Modal.Header>
-          <Modal.Heading2>
-            <Icon.BookOpen boxSize="28px" /> Bibliothèque
-          </Modal.Heading2>
-          <div style={{ marginLeft: 20 }}>
-            <HorizontalNavigation.Group>
-              <HorizontalNavigation.Button
-                isActive={activeTab === "characters"}
-                onClick={() => setActiveTab("characters")}
-              >
-                <Icon.Users boxSize="14px" />
-                <span>Personnages</span>
-              </HorizontalNavigation.Button>
-              <HorizontalNavigation.Button
-                isActive={activeTab === "images"}
-                onClick={() => setActiveTab("images")}
-              >
-                <Icon.Image boxSize="14px" />
-                <span>Médias</span>
-              </HorizontalNavigation.Button>
-            </HorizontalNavigation.Group>
-          </div>
-          <div style={{ flex: 1, textAlign: "right" }}>
-            <Button.Tertiary
-              tabIndex={1}
-              style={{ marginLeft: 8 }}
-              onClick={onClose}
-            >
-              Fermer
-            </Button.Tertiary>
-          </div>
-        </Modal.Header>
+        <LibraryHeader
+          activeTab={activeTab}
+          onSelectTab={(tab) => {
+            if (tab === "maps") onSelectMaps();
+            else setActiveTab(tab);
+          }}
+          onClose={onClose}
+        />
         {activeTab === "characters" ? (
           <Modal.Body style={{ flex: 1, overflowY: "hidden" }}>
-            <CharacterLibraryTab mapId={mapId} />
+            <CharacterLibraryTab mapId={mapId} getDropPoint={getDropPoint} />
           </Modal.Body>
         ) : (
           <>
@@ -472,7 +458,9 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({
                     >
                       <Icon.Plus boxSize="24px" />
                       <span>
-                        {isUploading ? "Envoi en cours…" : "Importer un fichier"}
+                        {isUploading
+                          ? "Envoi en cours…"
+                          : "Importer un fichier"}
                       </span>
                     </Button.Primary>
                   </div>
@@ -526,14 +514,16 @@ const Item: React.FC<{
         >
           <Icon.Edit boxSize="16px" />
         </Button.Primary>
-        <Button.Primary
-          small
-          title="Afficher aux joueurs (plein écran)"
-          iconOnly
-          onClick={() => splashShareImage(item.id)}
-        >
-          <Icon.Share boxSize="16px" />
-        </Button.Primary>
+        {isVideo ? null : (
+          <Button.Primary
+            small
+            title="Montrer ce média aux joueurs, en plein écran"
+            onClick={() => splashShareImage(item.id)}
+          >
+            <Icon.Share boxSize="14px" />
+            <span>Montrer</span>
+          </Button.Primary>
+        )}
         <Button.Primary
           small
           title="Partager dans le chat"
@@ -629,8 +619,7 @@ const EditImageModal: React.FC<{
           />
           {isConfirmingDelete ? (
             <DeleteConfirmText>
-              Supprimer définitivement ce média ? Cette action est
-              irréversible.
+              Supprimer définitivement ce média ? Cette action est irréversible.
             </DeleteConfirmText>
           ) : null}
         </Modal.Body>
@@ -705,10 +694,14 @@ const Menu = styled.span`
 `;
 
 const Content = styled.div`
-  width: 90vw;
-  height: 90vh;
-  background-color: #0d0f14;
-  border-radius: 5px;
+  /* même gabarit que le rayon des cartes : une seule et même fenêtre */
+  width: calc(100vw - 16px);
+  height: calc(80vh + 53px);
+  background-color: ${ds.colors.surface};
+  border: 1px solid ${ds.colors.borderStrong};
+  border-radius: 14px;
+  box-shadow: ${ds.shadows.lg};
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 `;
