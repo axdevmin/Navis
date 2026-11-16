@@ -1,4 +1,22 @@
-name: "[Auto] Build, Push & Deploy to VPS"
+# A placer dans le depot axdevmin/Navis, en remplacement de
+# .github/workflows/deploy.yml
+#
+# Ce que l'ancienne version faisait et qui ne marche plus :
+#   - elle construisait une image amd64, or C3PO est en ARM64 : l'image n'y
+#     demarre pas ;
+#   - elle se connectait a BD1, instance Oracle qui a cesse d'exister ;
+#   - elle montait /home/ubuntu/navis-data, chemin de BD1 ; sur C3PO les
+#     donnees sont dans /opt/stacks/navis/data ;
+#   - elle lancait un `docker run` avec -p 3000:3000 et sans etiquette
+#     Traefik : le conteneur n'aurait pas ete joignable via navis.availl.fr,
+#     et il aurait orpheline la stack Portainer qui gere Navis.
+#
+# Desormais le workflow ne connait plus rien de l'infrastructure : il appelle
+# un script qui vit sur le serveur, dans le depot c3po-stack
+# (stacks/navis/deployer.sh). C'est ce script qui construit l'image en ARM
+# natif, bascule par l'API Portainer, verifie que le site repond et revient
+# en arriere tout seul si ce n'est pas le cas.
+name: "[Auto] Build, Push & Deploy to C3PO"
 
 on:
   push:
@@ -27,39 +45,41 @@ jobs:
           git push origin master
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
+      # Le tag git manquait jusqu'ici : le commit de bump porte [skip ci],
+      # donc rien ne le posait. D'ou un depot ou package.json annoncait
+      # 2.0.17 alors que le dernier tag etait v2.0.16.
+      - name: Tag the release
+        run: |
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+
       - name: Login Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build & Push Docker image
+      # Cette image reste en amd64 : elle ne sert plus a C3PO, qui construit
+      # la sienne en ARM, mais elle garde une trace versionnee hors du
+      # serveur. A supprimer si elle ne sert plus a rien.
+      - name: Build & Push Docker image (amd64, archive)
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: axelvaillant/compass-map:latest
+          tags: |
+            axelvaillant/compass-map:latest
+            axelvaillant/compass-map:${{ steps.version.outputs.version }}
 
-      - name: Deploy sur le VPS
+      - name: Deploy sur C3PO
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.C3PO_HOST || secrets.VPS_HOST }}
           username: ubuntu
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key: ${{ secrets.C3PO_SSH_KEY || secrets.VPS_SSH_KEY }}
           timeout: 10m
-          command_timeout: 10m
+          # La construction ARM prend environ 9 minutes sur les 2 coeurs du
+          # serveur ; 25 minutes laissent de la marge sans masquer un blocage.
+          command_timeout: 25m
           script: |
-            echo '${{ secrets.DOCKERHUB_TOKEN }}' | sudo docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-            sudo docker pull axelvaillant/compass-map:latest
-            sudo docker stop navis || true
-            sudo docker rm navis || true
-            sudo docker run -d \
-              --name navis \
-              --restart always \
-              -p 3000:3000 \
-              -v /home/ubuntu/navis-data:/var/data/navis \
-              -e DATA_DIRECTORY=/var/data/navis \
-              -e DM_PASSWORD='${{ secrets.DM_PASSWORD }}' \
-              -e PC_PASSWORD='${{ secrets.PC_PASSWORD }}' \
-              axelvaillant/compass-map:latest
-            sudo docker image prune -f
+            sudo /opt/stacks/navis/deployer.sh
