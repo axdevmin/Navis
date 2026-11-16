@@ -202,9 +202,9 @@ const PlayerMap = ({
                   onClick={() => setShowItems((showItems) => !showItems)}
                 >
                   {showItems ? (
-                    <Icon.ChevronDown boxSize="18px" />
+                    <Icon.ChevronDown boxSize="16px" />
                   ) : (
-                    <Icon.ChevronUp boxSize="18px" />
+                    <Icon.ChevronUp boxSize="16px" />
                   )}
                 </Toolbar.Logo>
                 {showItems ? (
@@ -219,7 +219,7 @@ const PlayerMap = ({
                           controlRef.current?.controls.center();
                         }}
                       >
-                        <Icon.Compass boxSize="20px" />
+                        <Icon.Compass boxSize="16px" />
                         <Icon.Label>Centrer</Icon.Label>
                       </Toolbar.Button>
                     </Toolbar.Item>
@@ -235,7 +235,7 @@ const PlayerMap = ({
                           return () => clearInterval(interval);
                         }}
                       >
-                        <Icon.ZoomIn boxSize="20px" />
+                        <Icon.ZoomIn boxSize="16px" />
                         <Icon.Label>Zoom +</Icon.Label>
                       </Toolbar.LongPressButton>
                     </Toolbar.Item>
@@ -251,7 +251,7 @@ const PlayerMap = ({
                           return () => clearInterval(interval);
                         }}
                       >
-                        <Icon.ZoomOut boxSize="20px" />
+                        <Icon.ZoomOut boxSize="16px" />
                         <Icon.Label>Zoom −</Icon.Label>
                       </Toolbar.LongPressButton>
                     </Toolbar.Item>
@@ -261,13 +261,13 @@ const PlayerMap = ({
                           window.location.href = "/mj";
                         }}
                       >
-                        <Icon.Shield boxSize="20px" />
+                        <Icon.Shield boxSize="16px" />
                         <Icon.Label>Mode MJ</Icon.Label>
                       </Toolbar.Button>
                     </Toolbar.Item>
                     <Toolbar.Item>
                       <Toolbar.Button onClick={onLogout}>
-                        <Icon.LogOut boxSize="20px" />
+                        <Icon.LogOut boxSize="16px" />
                         <Icon.Label>Quitter</Icon.Label>
                       </Toolbar.Button>
                     </Toolbar.Item>

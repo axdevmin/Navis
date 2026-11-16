@@ -507,11 +507,11 @@ const TokenRenderer = (props: {
         label: "Type",
         value: token.tokenType ?? "marker",
         options: {
-          "👤 Personnage": "character",
-          "👹 Créature": "creature",
-          "📦 Objet": "object",
-          "⚠️ Danger": "hazard",
-          "📍 Marqueur": "marker",
+          "Personnage": "character",
+          "Créature": "creature",
+          "Objet": "object",
+          "Danger": "hazard",
+          "Marqueur": "marker",
         },
         onChange: (tokenType: TokenType, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -533,7 +533,7 @@ const TokenRenderer = (props: {
         },
         transient: false,
       },
-      "💾 Enregistrer comme personnage": button(() => {
+      "Enregistrer comme personnage": button(() => {
         saveAsLibraryCharacter({
           variables: {
             input: {

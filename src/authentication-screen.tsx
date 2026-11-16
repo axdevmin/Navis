@@ -96,13 +96,11 @@ const RoleBadge = styled.div`
   gap: 6px;
   background: ${ds.colors.accentMuted};
   border: 1px solid ${ds.colors.accentBorder};
-  border-radius: ${ds.radii.full};
+  border-radius: ${ds.radii.sm};
   padding: 4px 12px;
   font-size: 11px;
   font-weight: 600;
   color: ${ds.colors.accent};
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   font-family: ${ds.font.sans};
   margin: 0 auto 24px;
 `;
@@ -164,13 +162,13 @@ export const AuthenticationScreen: React.FC<{
           onChange={(ev) => setPassword(ev.target.value)}
           autoFocus
         />
-        {error ? <ErrorBox>⚠ {error}</ErrorBox> : null}
+        {error ? <ErrorBox>{error}</ErrorBox> : null}
         <SubmitButton type="submit" disabled={isLoading}>
           {isLoading ? "Connexion..." : "Se connecter"}
         </SubmitButton>
       </Form>
       <SwitchLink href={requiredRole === "DM" ? "/" : "/mj"}>
-        {requiredRole === "DM" ? "→ Section joueurs" : "→ Section MJ"}
+        {requiredRole === "DM" ? "Aller à la vue joueurs" : "Aller à la vue MJ"}
       </SwitchLink>
     </BackgroundImageContainer>
   );

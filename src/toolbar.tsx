@@ -92,7 +92,7 @@ const ToolbarItem = styled.li<{
       content: "";
       position: absolute;
       top: 5px;
-      right: 5px;
+      left: 21px;
       width: 5px;
       height: 5px;
       border-radius: 50%;
@@ -106,7 +106,8 @@ const ToolbarItem = styled.li<{
       ? `
     @media (max-width: 720px) {
       > button { padding: 0 9px; }
-      > button > [data-toolbar-label] { display: none; }
+      > button > [data-toolbar-label],
+      > button > span:last-of-type { display: none; }
     }`
       : `
     > button {
@@ -147,7 +148,8 @@ const ToolbarItem = styled.li<{
     }
 
     @media (hover: none) {
-      > button > [data-toolbar-label] { display: none; }
+      > button > [data-toolbar-label],
+      > button > span:last-of-type { display: none; }
     }`}
 `;
 

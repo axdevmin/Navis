@@ -2,58 +2,32 @@ import * as React from "react";
 import styled from "@emotion/styled/macro";
 import * as Icon from "./feather-icons";
 import { ds } from "./design-system";
+import { floatingSurface } from "./ui";
 
 export const IconButton = styled.button<{
   colorVariant?: "white" | "green" | "accent";
 }>`
+  ${floatingSurface}
   position: relative;
-  height: 36px;
-  width: 36px;
-  background: ${(p) =>
-    p.colorVariant === "accent" ? ds.colors.accentMuted : ds.colors.glassDark};
-  backdrop-filter: ${ds.blur.md};
-  -webkit-backdrop-filter: ${ds.blur.md};
-  border: 1px solid
-    ${(p) =>
-      p.colorVariant === "accent"
-        ? ds.colors.accentBorder
-        : ds.colors.borderStrong};
+  height: 34px;
+  width: 34px;
+  border-radius: ${ds.radii.md};
   z-index: 20;
   padding: 0;
   display: flex;
   justify-content: center;
   align-items: center;
-  border-radius: ${ds.radii.md};
   cursor: pointer;
   color: ${(p) =>
     p.colorVariant === "accent" ? ds.colors.accent : ds.colors.textSecondary};
-  transition: all ${ds.transitions.fast};
-  box-shadow: ${ds.shadows.md};
-
-  svg {
-    stroke: ${(p) =>
-      p.colorVariant === "accent" ? ds.colors.accent : ds.colors.textSecondary};
-    transition: stroke ${ds.transitions.fast};
-  }
+  transition: color ${ds.transitions.fast}, border-color ${ds.transitions.fast};
 
   &:hover {
-    background: ${(p) =>
+    color: ${(p) =>
       p.colorVariant === "accent"
-        ? "rgba(227, 181, 101,0.2)"
-        : ds.colors.surfaceHover};
-    border-color: ${(p) =>
-      p.colorVariant === "accent" ? ds.colors.accent : ds.colors.borderStrong};
-    color: ${ds.colors.textPrimary};
-    transform: translateY(-1px);
-
-    svg {
-      stroke: ${(p) =>
-        p.colorVariant === "accent" ? ds.colors.accent : ds.colors.textPrimary};
-    }
-  }
-
-  &:active {
-    transform: translateY(0);
+        ? ds.colors.accentHover
+        : ds.colors.textPrimary};
+    border-color: rgba(255, 255, 255, 0.2);
   }
 `;
 
@@ -66,7 +40,6 @@ export const ButtonBadge = styled.span`
   border-radius: 50%;
   background: ${ds.colors.accent};
   border: 1.5px solid ${ds.colors.bg};
-  box-shadow: 0 0 6px rgba(227, 181, 101, 0.6);
 `;
 
 export const ChatToggleButton: React.FC<{
@@ -79,7 +52,7 @@ export const ChatToggleButton: React.FC<{
       style={{ pointerEvents: "all" }}
       colorVariant={hasUnreadMessages ? "accent" : undefined}
     >
-      <Icon.MessageCircle boxSize="18px" />
+      <Icon.MessageCircle boxSize="16px" />
       {hasUnreadMessages ? <ButtonBadge /> : null}
     </IconButton>
   );

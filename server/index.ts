@@ -55,7 +55,10 @@ Navis is reachable via the following addresses:
 
     console.log(`
 Player Section: ${addresses[0]}
-DM Section: ${addresses[0]}/dm`);
+DM Section: ${addresses[0]}/mj
+
+Ces adresses servent le dernier build (dossier build/).
+En développement (npm run dev), ouvrez plutôt http://localhost:4000`);
 
     console.log(`\n-------------------\n`);
   });

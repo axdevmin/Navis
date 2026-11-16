@@ -172,8 +172,7 @@ export const globalStyles = css`
     color: #a0a0a5 !important;
     font-size: 12px !important;
     font-weight: 500 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.06em !important;
+    letter-spacing: 0 !important;
   }
 
   /* Chakra UI Menu dark theme overrides */

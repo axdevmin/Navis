@@ -4,7 +4,7 @@ _15 novembre 2026 — branche `feature/design-navis`, rien n'est commité._
 
 ## En bref
 
-L'écran du MJ a été réorganisé autour d'une idée : **ce qui compte en partie (quelle carte, est-elle en direct, l'envoyer) est en haut, les outils de dessin à gauche, tout le reste dans un seul dock en bas.** La palette passe du bleu générique à « encre & laiton », appliquée à toute l'application.
+L'écran du MJ a été réorganisé autour d'une idée : **ce qui compte en partie (quelle carte, est-elle en direct, l'envoyer) est en haut, les outils de dessin à gauche, tout le reste dans un seul dock en bas.** L'identité visuelle est « graphite & laiton », dans l'esprit de Raycast : interface neutre et dense, pilotée au clavier, où la carte est la seule chose colorée à l'écran.
 
 Au passage, trois vrais bugs ont été corrigés, dont un bloquant : **le mode développement (`npm run dev`) ne démarrait plus du tout.**
 
@@ -12,7 +12,7 @@ Au passage, trois vrais bugs ont été corrigés, dont un bloquant : **le mode d
 | --- | --- |
 | ![Écran MJ avant](v2/avant-mj.jpg) | ![Écran MJ après](v2/apres-mj.jpg) |
 
-Vue joueur et vue MJ sur petit écran : [apres-joueur.jpg](v2/apres-joueur.jpg), [apres-mj-mobile.jpg](v2/apres-mj-mobile.jpg).
+Palette de commandes : [apres-palette.jpg](v2/apres-palette.jpg). Vue joueur et vue MJ sur petit écran : [apres-joueur.jpg](v2/apres-joueur.jpg), [apres-mj-mobile.jpg](v2/apres-mj-mobile.jpg).
 
 Vérifié : types (`tsc`), 103 tests, build de production, et rendu réel dans un Chromium headless (captures ci-dessus). **Non vérifié** : rendu sur un vrai GPU, tactile, application Android TV.
 
@@ -58,18 +58,19 @@ Vérifié : types (`tsc`), 103 tests, build de production, et rendu réel dans u
 
 ### Écran du MJ
 
-- **Barre de session (haut gauche)** : nom de la carte (clic = changer de carte), état en toutes lettres (« En direct », « Autre carte en direct », « Hors ligne »), « Arrêter », et **« Envoyer » comme seul bouton plein** de l'écran. Un message confirme l'envoi ou signale l'échec.
-- **Menu « ⋯ »** : copie de l'image, déconnexion (éloignée du reste), numéro de version (l'ancien badge flottant est supprimé).
-- **Rail d'outils (gauche)** : Déplacer, Pinceau, Zone · Révéler / Masquer · Tout masquer / Tout révéler. Les outils « Bientôt » ne sont plus affichés (le code est conservé pour les réactiver).
-- **Dock unique (bas)** : Grille, Météo, Combat, Dés, Tokens · Cartes, Bibliothèque, **Notes** (nouveau bouton). Sur petit écran il passe sur deux lignes au lieu de déborder.
-- **Un bouton n'est doré que s'il est réellement actif** (outil sélectionné, météo en cours, combat en cours, panneau ouvert).
-- Libellés à 10,5 px, cibles de 48 px minimum, infobulles avec les raccourcis.
-- Météo et dés : icônes au trait cohérentes à la place des emojis ; le panneau des dés précise que le lancer est visible par les joueurs.
+- **Barre de session (haut gauche)** : nom de la carte (clic = changer de carte), état en toutes lettres (« En direct », « Autre carte en direct », « Hors ligne »), « Arrêter », et **« Envoyer » comme seul bouton plein** de l'écran, avec son raccourci affiché. Un message confirme l'envoi ou signale l'échec.
+- **Menu « ⋯ »** : copie de l'image, déconnexion (éloignée du reste), numéro de version.
+- **Rail d'outils (gauche)** : boutons carrés à icône seule ; le nom et la touche apparaissent en infobulle. Révéler / Masquer n'apparaît qu'avec le pinceau ou la zone. Les outils « Bientôt » ne sont plus affichés (le code est conservé).
+- **Dock (bas)** : Actions, Grille, Météo, Combat, Dés, Tokens, Cartes, Bibliothèque, **Notes** (nouveau bouton). Icône et libellé sur une ligne ; libellés masqués sur petit écran.
+- **Palette de commandes (⌘K / Ctrl+K)** : un seul champ pour envoyer la carte, changer d'outil, régler la météo, lancer un dé, ouvrir une fenêtre, **changer de carte** et **chercher dans les notes**. Elle remplace l'ancienne recherche de notes (Ctrl+Maj+F et la loupe en haut à droite l'ouvrent aussi).
+- **Le laiton ne sert qu'à deux choses** : l'action principale et l'outil sélectionné. Un état en cours (météo active, combat) est signalé par une simple pastille.
 
 ### Toute l'application
 
-- **Palette « encre & laiton »** dans `src/design-system.ts` : fond encre, texte parchemin, un seul accent laiton. Le vert est réservé à « en direct », le rouge au danger. La centaine de couleurs codées en dur (bleus et violets) dans 27 fichiers ont été alignées dessus : fenêtres, menus contextuels, bibliothèque, combat, connexion.
-- Police système (plus de dépendance à Google Fonts, donc fonctionne hors ligne).
+- **Jetons dans `src/design-system.ts`** : surfaces graphite sans teinte, filet de 1 px, liseré clair en haut des fenêtres, une seule ombre. Trois niveaux de texte. Rayons de 12 px (fenêtres), 8 px (contrôles), 6 px (touches) : plus de pilules.
+- **Inter embarquée** dans l'application (plus de dépendance à Google Fonts, donc fonctionne hors ligne), 13 px. Folkard reste réservée au logo.
+- **Primitives partagées** dans `src/ui.tsx` (surface flottante, contrôle de 32 px, touche clavier) ; boutons et champs ramenés à ce gabarit.
+- La centaine de couleurs codées en dur (bleus et violets) dans 27 fichiers a été alignée sur les jetons. Emojis remplacés par des icônes au trait (météo, combat, liste des cartes, menus) et libellés en majuscules supprimés.
 - Anneau de focus visible au clavier, respect de « réduire les animations ».
 
 ### Rendu à la demande
@@ -96,7 +97,7 @@ Un changement de comportement à connaître : **le clic droit du navigateur est 
 ## 3. Ce qui reste, par ordre d'intérêt
 
 1. **Alléger ce que charge le joueur** : charger l'éditeur de notes et le rendu Markdown seulement quand on les ouvre.
-2. **Finir l'harmonisation** des fenêtres secondaires : il reste des emojis (liste des cartes, menu contextuel des tokens, factions) et la fenêtre de préparation du combat n'a pas été revue en détail.
+2. **Finir l'harmonisation** : les fenêtres de préparation du combat, de la bibliothèque et de l'éditeur de notes héritent des nouveaux jetons mais n'ont pas été redessinées une à une ; les écrans de connexion et d'attente n'ont pas pu être capturés (pas de mot de passe en local).
 3. **Mot de passe** stocké en clair dans le navigateur et accepté dans l'URL (`?password=`) : pratique pour la TV, mais il se retrouve dans l'historique et les journaux.
 4. `src/version.ts` indique 2.0.16 alors que `package.json` est en 2.0.17.
 5. Deux avertissements React préexistants (un `<button>` dans un `<button>`, la prop `isSideBarVisible` passée au DOM).

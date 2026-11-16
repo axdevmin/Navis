@@ -963,7 +963,7 @@ export const CombatTracker = (props: {
                             })
                           }
                         >
-                          💀
+                          <Icon.Skull boxSize="14px" />
                         </RowActionButton>
                         <RowActionButton
                           title={

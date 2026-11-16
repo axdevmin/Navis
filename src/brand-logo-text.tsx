@@ -16,8 +16,7 @@ const Tagline = styled.div`
   font-family: ${ds.font.sans};
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: ${ds.colors.textMuted};
   text-align: center;
   margin-top: -36px;

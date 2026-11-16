@@ -3,8 +3,8 @@ import styled from "@emotion/styled/macro";
 import { ds } from "./design-system";
 
 const InputInner = styled.input`
-  border: 1px solid ${ds.colors.border};
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid ${ds.colors.borderStrong};
+  background: rgba(255, 255, 255, 0.04);
   color: ${ds.colors.textPrimary};
   font-family: ${ds.font.sans};
   width: 100%;
@@ -18,11 +18,13 @@ const InputInner = styled.input`
     color: ${ds.colors.textMuted};
   }
 
-  &:focus,
   &:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  &:focus {
     border-color: ${ds.colors.accentBorder};
-    background: ${ds.colors.accentMuted};
-    box-shadow: 0 0 0 2px rgba(227, 181, 101, 0.1);
+    box-shadow: 0 0 0 3px rgba(227, 181, 101, 0.16);
   }
 `;
 

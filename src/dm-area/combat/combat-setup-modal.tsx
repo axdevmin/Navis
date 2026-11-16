@@ -227,10 +227,8 @@ const LibrarySection = styled.div`
 `;
 
 const LibrarySectionTitle = styled.div`
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 500;
   color: ${ds.colors.textMuted};
   font-family: ${ds.font.sans};
   margin-bottom: 6px;

@@ -213,22 +213,27 @@ const MapList = (props: {
             }}
           >
             {(() => {
-              const weatherIcons: Record<string, string> = {
-                sun: "☀️",
-                cloudy: "⛅",
-                rain: "🌧️",
-                storm: "⛈️",
-                snow: "❄️",
-                wind: "💨",
-                moon: "🌙",
+              const weatherIcons: Record<string, typeof Icon.Cloud> = {
+                sun: Icon.Sun,
+                cloudy: Icon.Cloud,
+                rain: Icon.CloudRain,
+                storm: Icon.CloudLightning,
+                snow: Icon.CloudSnow,
+                wind: Icon.Wind,
+                moon: Icon.Moon,
               };
-              const icon = weatherIcons[item.node.weatherSettings.type];
-              return icon ? (
-                <span title={item.node.weatherSettings.type}>{icon} </span>
+              const WeatherIcon = weatherIcons[item.node.weatherSettings.type];
+              return WeatherIcon ? (
+                <WeatherIcon
+                  boxSize="14px"
+                  marginRight="8px"
+                  verticalAlign="-2px"
+                  opacity={0.7}
+                />
               ) : null;
             })()}
             {item.node.title}{" "}
-            {item.node.id === props.liveMapId ? "(live)" : null}
+            {item.node.id === props.liveMapId ? "· en direct" : null}
           </ScrollableList.ListItemButton>
         </ScrollableList.ListItem>
       ))}
@@ -669,7 +674,10 @@ export const SelectMapModal = ({
                   Authorization: accessToken ? `Bearer ${accessToken}` : null,
                 },
                 onProgress: (progress) =>
-                  onProgress({ phase: "uploading", fraction: progress.fraction }),
+                  onProgress({
+                    phase: "uploading",
+                    fraction: progress.fraction,
+                  }),
               });
               const uploadResult = await uploadTask.done;
 
@@ -960,7 +968,9 @@ const CreateNewMapModal = ({
           {progress ? (
             <div style={{ marginTop: 16 }}>
               <ProgressBar
-                value={progress.phase === "uploading" ? progress.fraction : null}
+                value={
+                  progress.phase === "uploading" ? progress.fraction : null
+                }
                 label={createMapProgressLabel[progress.phase]}
               />
             </div>
@@ -979,7 +989,11 @@ const CreateNewMapModal = ({
                 </Button.Tertiary>
               </div>
               <div>
-                <Button.Primary type="submit" onClick={submit} disabled={isBusy}>
+                <Button.Primary
+                  type="submit"
+                  onClick={submit}
+                  disabled={isBusy}
+                >
                   {isBusy ? "Création en cours…" : "Créer la carte"}
                 </Button.Primary>
               </div>

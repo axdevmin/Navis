@@ -80,8 +80,8 @@ export const getWeatherPatchForType = (
 });
 
 const Container = styled.div`
-  padding: 14px;
-  min-width: 300px;
+  padding: 12px;
+  min-width: 292px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -97,7 +97,7 @@ const Title = styled.div`
 const WeatherGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  gap: 2px;
 `;
 
 const WeatherBtn = styled.button<{ isActive: boolean }>`
@@ -105,24 +105,22 @@ const WeatherBtn = styled.button<{ isActive: boolean }>`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 10px 6px 8px;
+  gap: 6px;
+  height: 56px;
   border-radius: ${ds.radii.md};
-  border: 1px solid
-    ${(p) => (p.isActive ? ds.colors.accentBorder : ds.colors.border)};
-  background: ${(p) =>
-    p.isActive ? ds.colors.accentMuted : "rgba(255,255,255,0.03)"};
+  border: none;
+  background: ${(p) => (p.isActive ? ds.colors.accentMuted : "transparent")};
   color: ${(p) => (p.isActive ? ds.colors.accent : ds.colors.textSecondary)};
   cursor: pointer;
   font-family: ${ds.font.sans};
-  font-size: 11px;
-  font-weight: ${(p) => (p.isActive ? "600" : "400")};
-  transition: all ${ds.transitions.fast};
+  font-size: 12px;
+  font-weight: 500;
+  transition: background ${ds.transitions.fast}, color ${ds.transitions.fast};
 
   &:hover {
-    background: ${ds.colors.surfaceHover};
-    border-color: ${ds.colors.borderStrong};
-    color: ${ds.colors.textPrimary};
+    background: ${(p) =>
+      p.isActive ? ds.colors.accentMuted : ds.colors.hover};
+    color: ${(p) => (p.isActive ? ds.colors.accent : ds.colors.textPrimary)};
   }
 `;
 

@@ -115,8 +115,6 @@ const ChatTitle = styled.span`
   font-size: 12px;
   font-weight: 600;
   color: ${ds.colors.textSecondary};
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   font-family: ${ds.font.sans};
 `;
 

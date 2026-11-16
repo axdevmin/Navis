@@ -4,7 +4,7 @@ import { createEnvironment } from "./relay-environment";
 import { RelayEnvironmentProvider } from "relay-hooks";
 import { useStaticRef } from "./hooks/use-static-ref";
 import { SplashScreen } from "./splash-screen";
-import { ChatToggleButton, IconButton } from "./chat-toggle-button";
+import { ChatToggleButton } from "./chat-toggle-button";
 import { Chat } from "./chat";
 import { useChatSoundsAndUnreadCount } from "./chat/chat";
 import { useLogInMutation } from "./chat/log-in-mutation";
@@ -14,7 +14,6 @@ import {
   TokenInfoAside,
   NoteWindowContextProvider,
 } from "./dm-area/token-info-aside";
-import * as Icon from "./feather-icons";
 import { SoundSettingsProvider } from "./sound-settings";
 import { animated, useSpring } from "react-spring";
 import type { SpringValue } from "react-spring";
@@ -171,16 +170,6 @@ const AuthenticatedAppShellRenderer: React.FC<{ isMapOnly: boolean }> = ({
                 }}
               >
                 <IconContainer>
-                  {isDM ? (
-                    <IconButton
-                      onClick={openCommandPalette}
-                      style={{ pointerEvents: "all" }}
-                      title="Chercher une action, une carte, une note"
-                      aria-label="Chercher une action, une carte, une note"
-                    >
-                      <Icon.Search boxSize="16px" />
-                    </IconButton>
-                  ) : null}
                   <ChatToggleButton
                     hasUnreadMessages={hasUnreadMessages}
                     onClick={() => {

@@ -291,7 +291,7 @@ export const ContextMenuRenderer = (props: {
                       },
                     },
                   });
-                }, isVisible ? "👁 Masquer aux joueurs" : "👁 Afficher aux joueurs")}
+                }, isVisible ? "Masquer aux joueurs" : "Afficher aux joueurs")}
                 {mi("#f2f2f2", "#1c1c1f",
                   () => toggleLabelVisibility(state.target!.id),
                   isLabelHidden ? "Afficher le texte" : "Masquer le texte"
@@ -303,7 +303,7 @@ export const ContextMenuRenderer = (props: {
                   token &&
                   !combatTokenIds.has(token.id) &&
                   mi("#86efac", "#1a2e1a", () => addTokenToCombat(token.id),
-                    "⚔ Ajouter au combat"
+                    "Ajouter au combat"
                   )}
                 <MenuDividerLoose borderColor="rgba(255,255,255,0.1)" my="2px" />
                 {mi("#f2f2f2", "#1c1c1f",
