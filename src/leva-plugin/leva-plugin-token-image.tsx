@@ -77,7 +77,7 @@ const TokenImageReference = () => {
                   closeOnBlur={node === null}
                 >
                   <PopoverTriggerLoose>
-                    <ButtonLoose size="xs">Change</ButtonLoose>
+                    <ButtonLoose size="xs">Changer</ButtonLoose>
                   </PopoverTriggerLoose>
                   <PortalLoose>
                     <PopoverContentLoose
@@ -103,15 +103,19 @@ const TokenImageReference = () => {
                     setValue(null);
                   }}
                 >
-                  Remove
+                  Retirer
                 </ButtonLoose>
               </BoxLoose>
             </>
           ) : (
             <BoxLoose>
-              <PopoverLoose isLazy placement="top-start" closeOnBlur={node === null}>
+              <PopoverLoose
+                isLazy
+                placement="top-start"
+                closeOnBlur={node === null}
+              >
                 <PopoverTriggerLoose>
-                  <ButtonLoose size="xs">Add</ButtonLoose>
+                  <ButtonLoose size="xs">Ajouter</ButtonLoose>
                 </PopoverTriggerLoose>
                 <PortalLoose>
                   <PopoverContentLoose width="400px">
@@ -179,7 +183,7 @@ const TokenImageList = (props: {
   const elementRef = React.useRef<HTMLDivElement>(null);
   return (
     <>
-      <PopoverHeaderLoose>Select Token Image</PopoverHeaderLoose>
+      <PopoverHeaderLoose>Choisir l'image du token</PopoverHeaderLoose>
       <PopoverCloseButtonLoose />
       <PopoverBodyLoose
         height="200px"
@@ -270,7 +274,7 @@ const TokenImageList = (props: {
                 inputRef.current?.click();
               }}
             >
-              Upload new Image
+              Importer une image
             </ButtonLoose>
           ) : null}
         </HStackLoose>

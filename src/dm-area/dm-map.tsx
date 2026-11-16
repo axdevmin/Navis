@@ -933,6 +933,25 @@ const DMMapFragment = graphql`
   }
 `;
 
+/**
+ * "aborted" : un envoi plus récent a remplacé celui-ci (ce n'est pas un échec).
+ */
+export type SendLiveMapResult = "success" | "aborted" | "error";
+
+/**
+ * Comment le brouillard arrive chez les joueurs :
+ *  - "direct" : chaque modification est envoyée aussitôt (si la carte est
+ *    projetée) ;
+ *  - "manual" : rien ne part tant que le MJ n'a pas cliqué sur « Envoyer ».
+ * Tokens visibles, météo, combat et dés sont toujours en direct.
+ */
+type SyncMode = "direct" | "manual";
+
+const syncModeModel: PersistedStateModel<SyncMode> = {
+  encode: identity,
+  decode: (value) => (value === "direct" ? "direct" : "manual"),
+};
+
 export const DmMap = (props: {
   map: dmMap_DMMapFragment$key;
   password: string;
@@ -942,7 +961,7 @@ export const DmMap = (props: {
   loadMap: (mapId: string) => void;
   openNotes: () => void;
   openMediaLibrary: () => void;
-  sendLiveMap: (image: HTMLCanvasElement) => Promise<boolean>;
+  sendLiveMap: (image: HTMLCanvasElement) => Promise<SendLiveMapResult>;
   saveFogProgress: (image: HTMLCanvasElement) => void;
   updateToken: (
     id: string,
@@ -1013,8 +1032,20 @@ export const DmMap = (props: {
     isConfiguringGridRef.current = isConfiguringGrid;
   });
 
+  const [syncMode, setSyncMode] = usePersistedState(
+    "dmSyncMode",
+    syncModeModel
+  );
+  // null : on ne sait pas (au chargement, rien ne dit si le brouillard
+  // sauvegardé a déjà été envoyé).
+  const [hasUnsentFog, setHasUnsentFog] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    setHasUnsentFog(null);
+  }, [map.id]);
+
   const [isSending, setIsSending] = React.useState(false);
   const sendToPlayers = async () => {
+    const wasProjected = isCurrentMapLive;
     let canvas: HTMLCanvasElement;
     if (map.mediaType === "video_url") {
       // Cartes YouTube : pas de brouillard, on envoie un canvas vide
@@ -1029,11 +1060,18 @@ export const DmMap = (props: {
       canvas = context.fogCanvas;
     }
     setIsSending(true);
-    const isSuccess = await props.sendLiveMap(canvas);
+    const result = await props.sendLiveMap(canvas);
     setIsSending(false);
+    if (result === "aborted") {
+      return;
+    }
+    const isSuccess = result === "success";
+    setHasUnsentFog(!isSuccess);
     showToast({
       title: isSuccess
-        ? "Carte envoyée aux joueurs"
+        ? wasProjected
+          ? "Brouillard envoyé aux joueurs"
+          : "Carte projetée aux joueurs"
         : "L'envoi a échoué. Vérifiez la connexion puis réessayez.",
       status: isSuccess ? "success" : "error",
       duration: isSuccess ? 2000 : 5000,
@@ -1041,6 +1079,36 @@ export const DmMap = (props: {
       position: "top",
     });
   };
+
+  /**
+   * Appelé à chaque modification du brouillard (pinceau, zone, tout
+   * masquer / révéler). En mode direct sur une carte projetée, la modification
+   * part aussitôt ; sinon elle est seulement sauvegardée côté MJ.
+   */
+  const onFogChanged = async (canvas: HTMLCanvasElement) => {
+    if (syncMode === "direct" && isCurrentMapLive) {
+      const result = await props.sendLiveMap(canvas);
+      if (result === "success") {
+        setHasUnsentFog(false);
+      } else if (result === "error") {
+        // ne rien perdre : on sauvegarde au moins côté MJ, et on le signale
+        setHasUnsentFog(true);
+        props.saveFogProgress(canvas);
+        showToast({
+          title:
+            "La synchronisation a échoué. Cliquez sur « Envoyer » pour réessayer.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
+        });
+      }
+      return;
+    }
+    setHasUnsentFog(true);
+    props.saveFogProgress(canvas);
+  };
+
   // Le raccourci clavier doit toujours appeler la version courante
   // (carte et mot de passe à jour), pas celle du premier rendu.
   const sendToPlayersRef = React.useRef(sendToPlayers);
@@ -1103,6 +1171,14 @@ export const DmMap = (props: {
     MapUpdateWeatherMutation
   );
 
+  const changeSyncMode = (mode: SyncMode) => {
+    setSyncMode(mode);
+    // en passant en direct, ce qui attendait part tout de suite
+    if (mode === "direct" && isCurrentMapLive && hasUnsentFog !== false) {
+      sendToPlayers();
+    }
+  };
+
   const fillFog = (mode: FogMode) => {
     const context = controlRef.current?.getContext();
     if (!context) {
@@ -1115,7 +1191,7 @@ export const DmMap = (props: {
       context.fogCanvas.getContext("2d")!
     );
     context.fogTexture.needsUpdate = true;
-    props.saveFogProgress(context.fogCanvas);
+    onFogChanged(context.fogCanvas);
   };
 
   const [confirmDialogNode, showDialog] = useConfirmationDialog();
@@ -1137,18 +1213,36 @@ export const DmMap = (props: {
   const paletteCommands: Array<PaletteCommand> = [
     {
       id: "send",
-      title: "Envoyer la carte aux joueurs",
+      title: isCurrentMapLive
+        ? "Envoyer le brouillard aux joueurs"
+        : "Projeter cette carte aux joueurs",
       group: "Session",
       icon: <Icon.Send boxSize="16px" />,
       keywords: "diffuser partager live direct",
       shortcut: ["mod", "S"],
       run: sendToPlayers,
     },
+    {
+      id: "sync-mode",
+      title:
+        syncMode === "direct"
+          ? "Passer en mode manuel"
+          : "Passer en mode direct",
+      group: "Session",
+      icon:
+        syncMode === "direct" ? (
+          <Icon.Send boxSize="16px" />
+        ) : (
+          <Icon.Radio boxSize="16px" />
+        ),
+      keywords: "synchronisation automatique live envoi brouillard",
+      run: () => changeSyncMode(syncMode === "direct" ? "manual" : "direct"),
+    },
     ...(isOtherMapLive
       ? [
           {
             id: "stop",
-            title: "Arrêter la diffusion",
+            title: "Arrêter la projection",
             group: "Session",
             icon: <Icon.Pause boxSize="16px" />,
             keywords: "cacher masquer hors ligne",
@@ -1327,8 +1421,7 @@ export const DmMap = (props: {
           BrushToolContextProvider,
           {
             onDrawEnd: (canvas) => {
-              // TODO: toggle between instant send and incremental send
-              props.saveFogProgress(canvas);
+              onFogChanged(canvas);
             },
           },
         ] as ComponentWithPropsTuple<
@@ -1422,37 +1515,94 @@ export const DmMap = (props: {
                   isCurrentMapLive
                     ? "Les joueurs voient cette carte"
                     : isOtherMapLive
-                    ? "Les joueurs voient une autre carte"
+                    ? "Les joueurs voient une autre carte que celle-ci"
                     : "Les joueurs ne voient aucune carte"
                 }
               >
                 <LiveDot />
                 <span>
                   {isCurrentMapLive
-                    ? "En direct"
+                    ? "Projetée"
                     : isOtherMapLive
-                    ? "Autre carte en direct"
-                    : "Hors ligne"}
+                    ? "Autre carte projetée"
+                    : "Non projetée"}
                 </span>
               </LiveStatus>
               {isOtherMapLive ? (
                 <BarButton
                   onClick={props.hideMap}
-                  title="Ne plus afficher de carte aux joueurs"
+                  title="Arrêter la projection : les joueurs ne voient plus de carte"
                 >
                   <Icon.Pause boxSize="16px" />
                   <span>Arrêter</span>
                 </BarButton>
               ) : null}
-              <SendButton
-                onClick={sendToPlayers}
-                disabled={isSending}
-                title="Envoyer la carte et le brouillard aux joueurs"
+              <BarDivider />
+              <SyncModeSwitch
+                role="radiogroup"
+                aria-label="Envoi du brouillard"
               >
-                <Icon.Send boxSize="16px" />
-                <span>{isSending ? "Envoi…" : "Envoyer"}</span>
-                <Kbd keys={["mod", "S"]} onAccent />
-              </SendButton>
+                <SyncModeOption
+                  role="radio"
+                  aria-checked={syncMode === "direct"}
+                  isSelected={syncMode === "direct"}
+                  onClick={() => changeSyncMode("direct")}
+                  title="Direct : chaque modification du brouillard est envoyée aussitôt aux joueurs"
+                >
+                  <Icon.Radio boxSize="14px" />
+                  <span>Direct</span>
+                </SyncModeOption>
+                <SyncModeOption
+                  role="radio"
+                  aria-checked={syncMode === "manual"}
+                  isSelected={syncMode === "manual"}
+                  onClick={() => changeSyncMode("manual")}
+                  title="Manuel : le brouillard n'est envoyé aux joueurs que lorsque vous cliquez sur Envoyer"
+                >
+                  <Icon.Send boxSize="14px" />
+                  <span>Manuel</span>
+                </SyncModeOption>
+              </SyncModeSwitch>
+              {!isCurrentMapLive ? (
+                <SendButton
+                  onClick={sendToPlayers}
+                  disabled={isSending}
+                  title="Montrer cette carte aux joueurs"
+                >
+                  <Icon.Send boxSize="16px" />
+                  <span>{isSending ? "Envoi…" : "Projeter"}</span>
+                  <Kbd keys={["mod", "S"]} onAccent />
+                </SendButton>
+              ) : syncMode === "direct" && hasUnsentFog !== true ? (
+                <SyncState title="Chaque modification du brouillard est envoyée aussitôt aux joueurs">
+                  <Icon.Check boxSize="14px" />
+                  <span>Synchro auto</span>
+                </SyncState>
+              ) : hasUnsentFog === false ? (
+                <SyncState title="Les joueurs voient le brouillard tel que vous le voyez">
+                  <Icon.Check boxSize="14px" />
+                  <span>À jour</span>
+                </SyncState>
+              ) : hasUnsentFog === true ? (
+                <SendButton
+                  onClick={sendToPlayers}
+                  disabled={isSending}
+                  title="Des modifications du brouillard n'ont pas encore été envoyées aux joueurs"
+                >
+                  <Icon.Send boxSize="16px" />
+                  <span>{isSending ? "Envoi…" : "Envoyer"}</span>
+                  <Kbd keys={["mod", "S"]} onAccent />
+                </SendButton>
+              ) : (
+                <BarButton
+                  onClick={sendToPlayers}
+                  disabled={isSending}
+                  title="Renvoyer le brouillard aux joueurs"
+                >
+                  <Icon.Send boxSize="16px" />
+                  <span>{isSending ? "Envoi…" : "Envoyer"}</span>
+                </BarButton>
+              )}
               <SessionMenu
                 onCopy={asyncClipBoardApi ? copyMapToClipboard : null}
                 onLogout={props.onLogout}
@@ -1703,6 +1853,61 @@ const SendButton = styled.button`
   @media (max-width: 720px) {
     padding: 0 10px;
     > span:last-of-type {
+      display: none;
+    }
+  }
+`;
+
+/** Sélecteur à deux positions : Direct / Manuel. */
+const SyncModeSwitch = styled.div`
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  gap: 2px;
+  border-radius: ${ds.radii.md};
+  background: rgba(255, 255, 255, 0.05);
+`;
+
+const SyncModeOption = styled.button<{ isSelected: boolean }>`
+  ${controlBase}
+  height: 28px;
+  padding: 0 9px;
+  gap: 6px;
+  border-radius: ${ds.radii.sm};
+  color: ${(p) => (p.isSelected ? ds.colors.textPrimary : ds.colors.textMuted)};
+  background: ${(p) => (p.isSelected ? ds.colors.selected : "transparent")};
+  box-shadow: ${(p) =>
+    p.isSelected ? "inset 0 1px 0 rgba(255, 255, 255, 0.08)" : "none"};
+
+  &:hover {
+    background: ${(p) => (p.isSelected ? ds.colors.selected : "transparent")};
+  }
+
+  @media (max-width: 900px) {
+    > span {
+      display: none;
+    }
+  }
+`;
+
+/** État passif : rien à faire, tout est déjà chez les joueurs. */
+const SyncState = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: ${ds.colors.textSecondary};
+
+  > svg {
+    color: ${ds.colors.success};
+  }
+
+  @media (max-width: 720px) {
+    > span {
       display: none;
     }
   }

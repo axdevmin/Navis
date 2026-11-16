@@ -24,7 +24,7 @@ import { ISendRequestTask, sendRequest } from "../http-request";
 import { AuthenticatedAppShell } from "../authenticated-app-shell";
 import { AccessTokenProvider } from "../hooks/use-access-token";
 import { usePersistedState } from "../hooks/use-persisted-state";
-import { DmMap } from "./dm-map";
+import { DmMap, SendLiveMapResult } from "./dm-map";
 import { Socket } from "socket.io-client";
 import { MapTokenEntity } from "../map-typings";
 import { isFileDrag } from "../hooks/use-drop-zone";
@@ -196,11 +196,11 @@ const Content = ({
 
   const sendLiveMapTaskRef = React.useRef<null | ISendRequestTask>(null);
   const sendLiveMap = React.useCallback(
-    async (canvas: HTMLCanvasElement): Promise<boolean> => {
+    async (canvas: HTMLCanvasElement): Promise<SendLiveMapResult> => {
       const loadedMapId = dmAreaResponse.data?.map?.id;
 
       if (!loadedMapId) {
-        return false;
+        return "error";
       }
 
       sendLiveMapTaskRef.current?.abort();
@@ -208,7 +208,7 @@ const Content = ({
         canvas.toBlob(res);
       });
       if (!blob) {
-        return false;
+        return "error";
       }
 
       const formData = new FormData();
@@ -227,7 +227,11 @@ const Content = ({
       });
       sendLiveMapTaskRef.current = task;
       const result = await task.done;
-      return result.type === "success";
+      return result.type === "success"
+        ? "success"
+        : result.type === "abort"
+        ? "aborted"
+        : "error";
     },
     [dmAreaResponse.data?.map?.id, dmPassword]
   );

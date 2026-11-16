@@ -24,7 +24,7 @@ const NoteReference = () => {
     <>
       {reactNode}
       <Row input>
-        <Label>Reference</Label>
+        <Label>Note liée</Label>
 
         <HStackLoose alignItems="center" spacing={1}>
           {displayValue ? (
@@ -36,7 +36,7 @@ const NoteReference = () => {
                   setValue(null);
                 }}
               >
-                Remove
+                Retirer
               </ButtonLoose>
               <ButtonLoose
                 size="xs"
@@ -44,7 +44,7 @@ const NoteReference = () => {
                   noteWindowActions.focusOrShowNoteInNewWindow(displayValue);
                 }}
               >
-                Edit
+                Ouvrir
               </ButtonLoose>
             </>
           ) : (
@@ -56,7 +56,7 @@ const NoteReference = () => {
                 });
               }}
             >
-              Link
+              Lier
             </ButtonLoose>
           )}
         </HStackLoose>

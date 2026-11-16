@@ -327,7 +327,7 @@ const TokenRenderer = (props: {
       },
       radius: {
         type: LevaInputs.NUMBER,
-        label: "Size",
+        label: "Taille",
         value: token.radius,
         step: 1,
         min: 1,
@@ -363,11 +363,12 @@ const TokenRenderer = (props: {
       radiusOptions: buttonGroup({
         label: null,
         opts: {
-          "0.25x": () => updateRadiusRef.current?.(0.25),
-          "0.5x": () => updateRadiusRef.current?.(0.5),
-          "1x": () => updateRadiusRef.current?.(1),
-          "2x": () => updateRadiusRef.current?.(2),
-          "3x": () => updateRadiusRef.current?.(3),
+          // en nombre de cases de la grille
+          "×½": () => updateRadiusRef.current?.(0.5),
+          "×1": () => updateRadiusRef.current?.(1),
+          "×2": () => updateRadiusRef.current?.(2),
+          "×3": () => updateRadiusRef.current?.(3),
+          "×4": () => updateRadiusRef.current?.(4),
         },
       }),
       rotation: {
@@ -403,7 +404,7 @@ const TokenRenderer = (props: {
       },
       isLocked: {
         type: LevaInputs.BOOLEAN,
-        label: "Position locked",
+        label: "Verrouiller la position",
         value: token.isLocked,
         onChange: (isLocked: boolean, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -417,7 +418,7 @@ const TokenRenderer = (props: {
       },
       text: {
         type: LevaInputs.STRING,
-        label: "Title",
+        label: "Nom",
         value: typeof token.label === "string" ? token.label : "",
         onChange: (label: string, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -431,7 +432,7 @@ const TokenRenderer = (props: {
       },
       color: {
         type: LevaInputs.COLOR,
-        label: "Color",
+        label: "Couleur",
         value: token.color ?? "rgb(255, 255, 255)",
         onChange: (color: string, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -452,7 +453,7 @@ const TokenRenderer = (props: {
       },
       isVisibleForPlayers: {
         type: LevaInputs.BOOLEAN,
-        label: "Visible to players",
+        label: "Visible par les joueurs",
         value: token.isVisibleForPlayers,
         onChange: (isVisibleForPlayers: boolean, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -466,7 +467,7 @@ const TokenRenderer = (props: {
       },
       isMovableByPlayers: {
         type: LevaInputs.BOOLEAN,
-        label: "Movable by players",
+        label: "Déplaçable par les joueurs",
         value: token.isMovableByPlayers,
         onChange: (isMovableByPlayers: boolean, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -638,6 +639,53 @@ const TokenRenderer = (props: {
   const showContextMenu = useShowContextMenu();
   const [initMarkArea, cancelMarkArea] = useMarkArea();
   const tokenSelection = useTokenSelection(props.id);
+
+  // Redimensionnement rapide au clavier du ou des tokens sélectionnés :
+  // « + » agrandit, « - » réduit (par pas de 15 %).
+  const currentRadiusRef = React.useRef(token.radius);
+  React.useEffect(() => {
+    currentRadiusRef.current = token.radius;
+  }, [token.radius]);
+  const isSelectedForResize = isDungeonMaster && tokenSelection.isSelected;
+  React.useEffect(() => {
+    if (!isSelectedForResize) {
+      return;
+    }
+    const listener = (ev: KeyboardEvent) => {
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) {
+        return;
+      }
+      const target = ev.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const factor =
+        ev.key === "+" || ev.key === "="
+          ? 1.15
+          : ev.key === "-" || ev.key === "_"
+          ? 1 / 1.15
+          : null;
+      if (factor === null) {
+        return;
+      }
+      ev.preventDefault();
+      const radius = Math.max(
+        1,
+        Math.round(currentRadiusRef.current * factor * 10) / 10
+      );
+      currentRadiusRef.current = radius;
+      setValues({ radius });
+      updateToken(props.id, { radius });
+    };
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, [isSelectedForResize, props.id, setValues, updateToken]);
 
   const firstTimeStamp = React.useRef<null | number>(null);
 

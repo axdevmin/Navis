@@ -1,5 +1,4 @@
 import * as React from "react";
-import { animated, to } from "@react-spring/web";
 import { Box } from "@chakra-ui/react";
 import { useControls, useCreateStore, LevaInputs } from "leva";
 import graphql from "babel-plugin-relay/macro";
@@ -11,7 +10,6 @@ import { flow, identity } from "fp-ts/function";
 import * as E from "fp-ts/Either";
 import * as io from "io-ts";
 import { ThemedLevaPanel } from "./themed-leva-panel";
-import { ChatPositionContext } from "./authenticated-app-shell";
 import { useSelectedItems, usePropertiesPanel } from "./shared-token-state";
 import { levaPluginTokenImage } from "./leva-plugin/leva-plugin-token-image";
 import type { sharedTokenMenuUpdateManyMapTokenMutation } from "./__generated__/sharedTokenMenuUpdateManyMapTokenMutation.graphql";
@@ -96,24 +94,25 @@ const useTokenNoteDescriptionState = () =>
   useTokenMenuExpandedState(tokenNoteDescriptionStateSelector);
 
 export const SharedTokenMenu = (props: { currentMapId: string }) => {
-  const chatPosition = React.useContext(ChatPositionContext);
   const [selectedItems] = useSelectedItems();
   const [propertiesPanelHidden] = usePropertiesPanel();
 
   if (propertiesPanelHidden || selectedItems.size === 0) return null;
 
   return (
-    <animated.div
+    <div
       style={{
+        // À gauche, sous le rail d'outils : le côté droit appartient au suivi
+        // de combat et au chat, les deux panneaux se recouvraient.
         position: "absolute",
-        bottom: 100,
-        right:
-          chatPosition !== null
-            ? to(chatPosition.x, (value) => -value + 10 + chatPosition.width)
-            : 10,
-        // @ts-ignore
-        zIndex: 1,
+        left: 70,
+        bottom: 64,
+        zIndex: 25,
         width: 300,
+        maxWidth: "calc(100vw - 82px)",
+        maxHeight: "calc(100% - 144px)",
+        overflowY: "auto",
+        borderRadius: 12,
       }}
       onKeyDown={(ev) => ev.stopPropagation()}
     >
@@ -122,7 +121,7 @@ export const SharedTokenMenu = (props: { currentMapId: string }) => {
       ) : (
         <MultiTokenPanel currentMapId={props.currentMapId} />
       )}
-    </animated.div>
+    </div>
   );
 };
 
@@ -212,7 +211,7 @@ const SingleTokenPanels = (props: { store: StoreType }) => {
         titleBar={{
           filter: false,
           drag: false,
-          title: "Token Properties",
+          title: "Token — touches + et − pour la taille",
         }}
         collapsed={{
           collapsed: !show,
@@ -260,7 +259,7 @@ const MultiTokenPanel = (props: { currentMapId: string }) => {
       return {
         color: {
           type: LevaInputs.COLOR,
-          label: "Color",
+          label: "Couleur",
           value: firstItem.get("color"),
           onChange: (color: string, _, { initial, fromPanel }) => {
             if (initial || !fromPanel) {
@@ -286,7 +285,7 @@ const MultiTokenPanel = (props: { currentMapId: string }) => {
         },
         isVisibleForPlayers: {
           type: LevaInputs.BOOLEAN,
-          label: "Visible to players",
+          label: "Visibles par les joueurs",
           value: firstItem.get("isVisibleForPlayers"),
           onChange: (
             isVisibleForPlayers: boolean,
@@ -314,7 +313,7 @@ const MultiTokenPanel = (props: { currentMapId: string }) => {
         },
         isMovableByPlayers: {
           type: LevaInputs.BOOLEAN,
-          label: "Movable by players",
+          label: "Déplaçables par les joueurs",
           value: firstItem.get("isMovableByPlayers"),
           onChange: (
             isMovableByPlayers: boolean,
@@ -387,7 +386,7 @@ const MultiTokenPanel = (props: { currentMapId: string }) => {
       titleBar={{
         filter: false,
         drag: false,
-        title: `${selectedItems.size} Token selected`,
+        title: `${selectedItems.size} tokens sélectionnés`,
       }}
       collapsed={{
         collapsed: !show,
