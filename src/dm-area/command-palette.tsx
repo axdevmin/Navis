@@ -6,9 +6,7 @@ import { useQuery } from "relay-hooks";
 import * as Icon from "../feather-icons";
 import { ds } from "../design-system";
 import { floatingSurface, Kbd } from "../ui";
-import { useNoteWindowActions } from "./token-info-aside";
 import { commandPalette_MapsQuery } from "./__generated__/commandPalette_MapsQuery.graphql";
-import { commandPalette_NotesQuery } from "./__generated__/commandPalette_NotesQuery.graphql";
 
 /** Événement global pour ouvrir la palette depuis n'importe où dans l'app. */
 export const OPEN_COMMAND_PALETTE_EVENT = "navis:open-command-palette";
@@ -37,20 +35,6 @@ const MapsQuery = graphql`
         node {
           id
           title
-        }
-      }
-    }
-  }
-`;
-
-const NotesQuery = graphql`
-  query commandPalette_NotesQuery($query: String!) {
-    notesSearch(first: 6, query: $query) {
-      edges {
-        node {
-          documentId
-          title
-          preview
         }
       }
     }
@@ -89,7 +73,6 @@ export const CommandPalette = (props: {
   const [query, setQuery] = React.useState("");
   const [activeIndex, setActiveIndex] = React.useState(0);
   const listRef = React.useRef<HTMLDivElement | null>(null);
-  const noteWindowActions = useNoteWindowActions();
 
   const trimmedQuery = query.trim();
   const remoteQuery = useDebouncedValue(trimmedQuery, 180);
@@ -100,12 +83,6 @@ export const CommandPalette = (props: {
     { needle: remoteQuery },
     { skip: !hasRemoteQuery }
   );
-  const notesResponse = useQuery<commandPalette_NotesQuery>(
-    NotesQuery,
-    { query: remoteQuery },
-    { skip: !hasRemoteQuery }
-  );
-
   const entries = React.useMemo<Array<Entry>>(() => {
     const result: Array<Entry> = props.commands.filter(
       (command) =>
@@ -129,17 +106,6 @@ export const CommandPalette = (props: {
           run: () => props.onLoadMap(edge.node.id),
         });
       }
-      for (const edge of notesResponse.data?.notesSearch.edges ?? []) {
-        result.push({
-          id: `note:${edge.node.documentId}`,
-          title: edge.node.title,
-          group: "Notes",
-          icon: <Icon.FileText boxSize="16px" />,
-          detail: edge.node.preview,
-          run: () =>
-            noteWindowActions.focusOrShowNoteInNewWindow(edge.node.documentId),
-        });
-      }
     }
     return result;
   }, [
@@ -148,7 +114,6 @@ export const CommandPalette = (props: {
     trimmedQuery,
     hasRemoteQuery,
     mapsResponse.data,
-    notesResponse.data,
   ]);
 
   // La sélection reste dans les bornes quand la liste change.
@@ -170,9 +135,7 @@ export const CommandPalette = (props: {
   };
 
   const isSearching =
-    hasRemoteQuery &&
-    ((!mapsResponse.data && !mapsResponse.error) ||
-      (!notesResponse.data && !notesResponse.error));
+    hasRemoteQuery && !mapsResponse.data && !mapsResponse.error;
 
   let lastGroup: string | null = null;
 
@@ -216,8 +179,8 @@ export const CommandPalette = (props: {
             autoFocus
             value={query}
             onChange={(ev) => setQuery(ev.target.value)}
-            placeholder="Chercher une action, une carte, une note…"
-            aria-label="Chercher une action, une carte ou une note"
+            placeholder="Chercher une action ou une carte…"
+            aria-label="Chercher une action ou une carte"
             spellCheck={false}
           />
         </SearchRow>

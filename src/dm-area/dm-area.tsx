@@ -34,7 +34,6 @@ import {
   LibraryCharacterDragPayload,
 } from "./library/library-character-drag-type";
 import { useRandomBackground } from "../hooks/use-random-background";
-import { useNoteWindowActions } from "./token-info-aside";
 import { MapControlInterface } from "../map-view";
 import { useTokenImageUpload } from "./token-image-upload";
 import { dmAreaTokenAddManyMutation } from "./__generated__/dmAreaTokenAddManyMutation.graphql";
@@ -297,7 +296,6 @@ const Content = ({
     null
   );
 
-  const actions = useNoteWindowActions();
   const controlRef = React.useRef<MapControlInterface | null>(null);
 
   const dragRef = React.useRef(0);
@@ -610,9 +608,6 @@ const Content = ({
                 hideMap={hideMap}
                 showMapModal={showMapModal}
                 loadMap={setLoadedMapId}
-                openNotes={() => {
-                  actions.showNoteInWindow(null, "note-editor", true);
-                }}
                 openMediaLibrary={(tab) => {
                   setMode({ title: "MEDIA_LIBRARY", tab });
                 }}

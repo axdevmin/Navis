@@ -14,7 +14,7 @@ export type RoomToolContextValue = {
   /** Le tracé est fermé : la pièce peut être créée. */
   onCreateRoom: (points: ReadonlyArray<Point>) => void;
   /** Clic dans une pièce existante. `hide` : la remasquer au lieu de la révéler. */
-  onToggleRoom: (room: MapRoom, hide: boolean) => void;
+  onToggleRoom: (room: MapRoom, hide?: boolean) => void;
 };
 
 export const RoomToolContext = React.createContext<RoomToolContextValue>(
@@ -28,7 +28,7 @@ const SHELTERED_COLOR = "#5ac8fa";
  * Outil « Pièces ».
  *  - Clic hors de toute pièce : pose un sommet. Recliquer sur le premier
  *    sommet (ou Entrée) ferme le tracé et crée la pièce.
- *  - Clic dans une pièce : la révèle (Maj + clic : la remasque).
+ *  - Clic dans une pièce : la révèle, ou la remasque si elle l'est déjà.
  *  - Glisser : déplace la carte.
  */
 export const RoomMapTool: MapTool = {
@@ -66,7 +66,11 @@ export const RoomMapTool: MapTool = {
               .reverse()
               .find((room) => isPointInRoom(point, room.points));
             if (room) {
-              context.onToggleRoom(room, event.shiftKey === true);
+              // un clic bascule ; Maj + clic force le masquage
+              context.onToggleRoom(
+                room,
+                event.shiftKey === true ? true : undefined
+              );
               return;
             }
           }

@@ -96,7 +96,6 @@ const MapFragment = graphql`
       tokenImage {
         id
       }
-      referenceId
     }
     combat {
       isActive
@@ -124,12 +123,7 @@ export const ContextMenuRenderer = (props: {
             tokenType: (token.tokenType as any) ?? "marker",
             isAlive: token.isAlive ?? true,
             imageUrl: token.imageUrl ?? null,
-            reference: token.referenceId
-              ? {
-                  id: token.referenceId,
-                  type: "note",
-                }
-              : null,
+            reference: null,
           });
         }
       }

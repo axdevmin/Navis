@@ -2,9 +2,9 @@ import * as React from "react";
 import styled from "@emotion/styled/macro";
 import type { StoreType } from "leva/dist/declarations/src/types";
 import { ds } from "./design-system";
+import * as Icon from "./feather-icons";
 import { controlBase, floatingSurface, Kbd } from "./ui";
 import { TokenImageControl } from "./leva-plugin/leva-plugin-token-image";
-import { NoteReferenceControl } from "./leva-plugin/leva-plugin-note-reference";
 
 /**
  * Inspecteur de token.
@@ -53,6 +53,9 @@ const toHexColor = (color: string): string => {
 export const TokenInspector = (props: {
   store: StoreType;
   title: string;
+  /** Replié : seul l'en-tête (nom du token) reste affiché. */
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
 }): React.ReactElement => {
   const { store } = props;
   const data = store.useStore((state) => state.data) as AnyData;
@@ -77,8 +80,31 @@ export const TokenInspector = (props: {
 
   return (
     <Panel>
-      <Header>
-        {has("text") ? (
+      <Header isCollapsed={props.isCollapsed}>
+        <CollapseButton
+          type="button"
+          onClick={props.onToggleCollapsed}
+          aria-expanded={!props.isCollapsed}
+          aria-label={
+            props.isCollapsed
+              ? "Déplier les propriétés du token"
+              : "Replier les propriétés du token"
+          }
+          title={props.isCollapsed ? "Déplier" : "Replier"}
+        >
+          {props.isCollapsed ? (
+            <Icon.ChevronRight boxSize="14px" />
+          ) : (
+            <Icon.ChevronDown boxSize="14px" />
+          )}
+        </CollapseButton>
+        {props.isCollapsed ? (
+          // replié : le nom sert de rappel, un clic rouvre le panneau
+          <CollapsedTitle type="button" onClick={props.onToggleCollapsed}>
+            {(has("text") && String(valueOf("text") ?? "").trim()) ||
+              props.title}
+          </CollapsedTitle>
+        ) : has("text") ? (
           <NameInput
             value={valueOf("text") ?? ""}
             placeholder="Nom du token"
@@ -90,194 +116,194 @@ export const TokenInspector = (props: {
         )}
       </Header>
 
-      {has("radius") ? (
-        <Section>
-          <Row>
-            <RowLabel>
-              Taille
-              <Kbd keys={["+"]} />
-              <Kbd keys={["−"]} />
-            </RowLabel>
-            <NumberInput
-              type="number"
-              min={1}
-              step={1}
-              aria-label="Taille du token"
-              value={Math.round(Number(valueOf("radius")) * 10) / 10}
-              onChange={(ev) =>
-                set("radius", Math.max(1, toNumber(ev.target.value, 1)))
-              }
-              {...editProps("radius")}
-            />
-          </Row>
-          {sizePresets ? (
-            <Segmented role="group" aria-label="Taille en cases de la grille">
-              {Object.entries(sizePresets).map(([label, apply]) => (
-                <SegmentButton
-                  key={label}
-                  onClick={apply}
-                  title={`${label.replace("×", "")} case(s) de la grille`}
-                >
-                  {label}
-                </SegmentButton>
-              ))}
-            </Segmented>
-          ) : null}
-        </Section>
-      ) : null}
-
-      <Section>
-        {has("isVisibleForPlayers") ? (
-          <ToggleRow
-            label="Visible par les joueurs"
-            checked={valueOf("isVisibleForPlayers") === true}
-            onChange={(checked) => set("isVisibleForPlayers", checked)}
-          />
-        ) : null}
-        {has("isMovableByPlayers") ? (
-          <ToggleRow
-            label="Déplaçable par les joueurs"
-            checked={valueOf("isMovableByPlayers") === true}
-            onChange={(checked) => set("isMovableByPlayers", checked)}
-          />
-        ) : null}
-        {has("isLocked") ? (
-          <ToggleRow
-            label="Position verrouillée"
-            checked={valueOf("isLocked") === true}
-            onChange={(checked) => set("isLocked", checked)}
-          />
-        ) : null}
-        {has("isAlive") ? (
-          <ToggleRow
-            label="Vivant"
-            checked={valueOf("isAlive") === true}
-            onChange={(checked) => set("isAlive", checked)}
-          />
-        ) : null}
-      </Section>
-
-      <Section>
-        {has("color") ? (
-          <Row>
-            <RowLabel>Couleur</RowLabel>
-            <ColorField>
-              <ColorSwatch
-                type="color"
-                aria-label="Couleur du token"
-                value={toHexColor(String(valueOf("color") ?? "#ffffff"))}
-                onChange={(ev) => set("color", ev.target.value)}
-                {...editProps("color")}
-              />
-            </ColorField>
-          </Row>
-        ) : null}
-        {has("tokenType") ? (
-          <Row>
-            <RowLabel>Type</RowLabel>
-            <Select
-              aria-label="Type de token"
-              value={String(valueOf("tokenType"))}
-              onChange={(ev) => set("tokenType", ev.target.value)}
-            >
-              {TOKEN_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </Select>
-          </Row>
-        ) : null}
-        {has("tokenImageId") ? (
-          <Row>
-            <RowLabel>Image</RowLabel>
-            <TokenImageControl
-              value={valueOf("tokenImageId") ?? null}
-              setValue={(value) => set("tokenImageId", value)}
-            />
-          </Row>
-        ) : null}
-        {has("referenceId") ? (
-          <Row>
-            <RowLabel>Note liée</RowLabel>
-            <NoteReferenceControl
-              value={valueOf("referenceId") ?? null}
-              setValue={(value) => set("referenceId", value)}
-            />
-          </Row>
-        ) : null}
-      </Section>
-
-      {has("rotation") || has("position") ? (
-        <Details>
-          <DetailsSummary>Position et rotation</DetailsSummary>
-          <Section>
-            {has("rotation") ? (
+      {props.isCollapsed ? null : (
+        <>
+          {has("radius") ? (
+            <Section>
               <Row>
-                <RowLabel>Rotation</RowLabel>
-                <RangeInput
-                  type="range"
-                  min={0}
-                  max={360}
+                <RowLabel>
+                  Taille
+                  <Kbd keys={["+"]} />
+                  <Kbd keys={["−"]} />
+                </RowLabel>
+                <NumberInput
+                  type="number"
+                  min={1}
                   step={1}
-                  aria-label="Rotation du token"
-                  value={Number(valueOf("rotation")) || 0}
+                  aria-label="Taille du token"
+                  value={Math.round(Number(valueOf("radius")) * 10) / 10}
                   onChange={(ev) =>
-                    set("rotation", toNumber(ev.target.value, 0))
+                    set("radius", Math.max(1, toNumber(ev.target.value, 1)))
                   }
-                  onPointerDown={() => store.emitOnEditStart("rotation")}
-                  onPointerUp={() => store.emitOnEditEnd("rotation")}
-                  onBlur={() => store.emitOnEditEnd("rotation")}
+                  {...editProps("radius")}
                 />
-                <ValueHint>
-                  {Math.round(Number(valueOf("rotation")))}°
-                </ValueHint>
+              </Row>
+              {sizePresets ? (
+                <Segmented
+                  role="group"
+                  aria-label="Taille en cases de la grille"
+                >
+                  {Object.entries(sizePresets).map(([label, apply]) => (
+                    <SegmentButton
+                      key={label}
+                      onClick={apply}
+                      title={`${label.replace("×", "")} case(s) de la grille`}
+                    >
+                      {label}
+                    </SegmentButton>
+                  ))}
+                </Segmented>
+              ) : null}
+            </Section>
+          ) : null}
+
+          <Section>
+            {has("isVisibleForPlayers") ? (
+              <ToggleRow
+                label="Visible par les joueurs"
+                checked={valueOf("isVisibleForPlayers") === true}
+                onChange={(checked) => set("isVisibleForPlayers", checked)}
+              />
+            ) : null}
+            {has("isMovableByPlayers") ? (
+              <ToggleRow
+                label="Déplaçable par les joueurs"
+                checked={valueOf("isMovableByPlayers") === true}
+                onChange={(checked) => set("isMovableByPlayers", checked)}
+              />
+            ) : null}
+            {has("isLocked") ? (
+              <ToggleRow
+                label="Position verrouillée"
+                checked={valueOf("isLocked") === true}
+                onChange={(checked) => set("isLocked", checked)}
+              />
+            ) : null}
+            {has("isAlive") ? (
+              <ToggleRow
+                label="Vivant"
+                checked={valueOf("isAlive") === true}
+                onChange={(checked) => set("isAlive", checked)}
+              />
+            ) : null}
+          </Section>
+
+          <Section>
+            {has("color") ? (
+              <Row>
+                <RowLabel>Couleur</RowLabel>
+                <ColorField>
+                  <ColorSwatch
+                    type="color"
+                    aria-label="Couleur du token"
+                    value={toHexColor(String(valueOf("color") ?? "#ffffff"))}
+                    onChange={(ev) => set("color", ev.target.value)}
+                    {...editProps("color")}
+                  />
+                </ColorField>
               </Row>
             ) : null}
-            {has("position") ? (
+            {has("tokenType") ? (
               <Row>
-                <RowLabel>Position</RowLabel>
-                <PairInputs>
-                  <NumberInput
-                    type="number"
-                    step={1}
-                    aria-label="Position horizontale"
-                    value={Math.round(positionX)}
-                    onChange={(ev) =>
-                      set("position", [
-                        toNumber(ev.target.value, positionX),
-                        positionY,
-                      ])
-                    }
-                    {...editProps("position")}
-                  />
-                  <NumberInput
-                    type="number"
-                    step={1}
-                    aria-label="Position verticale"
-                    value={Math.round(positionY)}
-                    onChange={(ev) =>
-                      set("position", [
-                        positionX,
-                        toNumber(ev.target.value, positionY),
-                      ])
-                    }
-                    {...editProps("position")}
-                  />
-                </PairInputs>
+                <RowLabel>Type</RowLabel>
+                <Select
+                  aria-label="Type de token"
+                  value={String(valueOf("tokenType"))}
+                  onChange={(ev) => set("tokenType", ev.target.value)}
+                >
+                  {TOKEN_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </Select>
+              </Row>
+            ) : null}
+            {has("tokenImageId") ? (
+              <Row>
+                <RowLabel>Image</RowLabel>
+                <TokenImageControl
+                  value={valueOf("tokenImageId") ?? null}
+                  setValue={(value) => set("tokenImageId", value)}
+                />
               </Row>
             ) : null}
           </Section>
-        </Details>
-      ) : null}
 
-      {has(SAVE_AS_CHARACTER_KEY) ? (
-        <Footer>
-          <FooterButton onClick={() => data[SAVE_AS_CHARACTER_KEY].onClick?.()}>
-            Enregistrer dans la bibliothèque
-          </FooterButton>
-        </Footer>
-      ) : null}
+          {has("rotation") || has("position") ? (
+            <Details>
+              <DetailsSummary>Position et rotation</DetailsSummary>
+              <Section>
+                {has("rotation") ? (
+                  <Row>
+                    <RowLabel>Rotation</RowLabel>
+                    <RangeInput
+                      type="range"
+                      min={0}
+                      max={360}
+                      step={1}
+                      aria-label="Rotation du token"
+                      value={Number(valueOf("rotation")) || 0}
+                      onChange={(ev) =>
+                        set("rotation", toNumber(ev.target.value, 0))
+                      }
+                      onPointerDown={() => store.emitOnEditStart("rotation")}
+                      onPointerUp={() => store.emitOnEditEnd("rotation")}
+                      onBlur={() => store.emitOnEditEnd("rotation")}
+                    />
+                    <ValueHint>
+                      {Math.round(Number(valueOf("rotation")))}°
+                    </ValueHint>
+                  </Row>
+                ) : null}
+                {has("position") ? (
+                  <Row>
+                    <RowLabel>Position</RowLabel>
+                    <PairInputs>
+                      <NumberInput
+                        type="number"
+                        step={1}
+                        aria-label="Position horizontale"
+                        value={Math.round(positionX)}
+                        onChange={(ev) =>
+                          set("position", [
+                            toNumber(ev.target.value, positionX),
+                            positionY,
+                          ])
+                        }
+                        {...editProps("position")}
+                      />
+                      <NumberInput
+                        type="number"
+                        step={1}
+                        aria-label="Position verticale"
+                        value={Math.round(positionY)}
+                        onChange={(ev) =>
+                          set("position", [
+                            positionX,
+                            toNumber(ev.target.value, positionY),
+                          ])
+                        }
+                        {...editProps("position")}
+                      />
+                    </PairInputs>
+                  </Row>
+                ) : null}
+              </Section>
+            </Details>
+          ) : null}
+
+          {has(SAVE_AS_CHARACTER_KEY) ? (
+            <Footer>
+              <FooterButton
+                onClick={() => data[SAVE_AS_CHARACTER_KEY].onClick?.()}
+              >
+                Enregistrer dans la bibliothèque
+              </FooterButton>
+            </Footer>
+          ) : null}
+        </>
+      )}
     </Panel>
   );
 };
@@ -306,9 +332,35 @@ const Panel = styled.div`
   font-size: 13px;
 `;
 
-const Header = styled.div`
+const Header = styled.div<{ isCollapsed: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 8px;
-  border-bottom: 1px solid ${ds.colors.border};
+  border-bottom: ${(p) =>
+    p.isCollapsed ? "none" : `1px solid ${ds.colors.border}`};
+`;
+
+const CollapseButton = styled.button`
+  ${controlBase}
+  flex-shrink: 0;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+`;
+
+const CollapsedTitle = styled.button`
+  ${controlBase}
+  flex: 1;
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: ${ds.colors.textPrimary};
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
 `;
 
 const HeaderTitle = styled.div`

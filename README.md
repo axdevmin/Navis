@@ -40,7 +40,7 @@ Navis est un **fork** de [dungeon-revealer](https://github.com/dungeon-revealer/
 - **Grille** — configurable (taille, couleur, transparence, alignement)
 - **Chat** — temps réel avec lancers de dés intégrés (`[1d20]`, `[3d6]`, …)
 - **Macros de dés** — simples, template, avancées (Liquid)
-- **Notes** — Markdown, éditeur Monaco, permissions (privé/public), recherche plein texte, import/export
+- **Notes de carte** — un bloc de texte par carte, enregistré automatiquement
 - **Authentification** — mot de passe optionnel MJ et/ou joueurs
 - **Multi-plateforme** — desktop, tablette, mobile ; local ou internet
 
@@ -70,7 +70,6 @@ Détails complets : [`FEATURES.md`](FEATURES.md)
 | **3D** | Three.js 0.126 + react-three-fiber v5 |
 | **BDD** | SQLite3 v6 |
 | **Templating** | LiquidJS (macros de dés) |
-| **Éditeur** | Monaco Editor (notes) |
 | **Audio** | Howler.js |
 | **Docker** | Multi-stage (Node 20-bullseye) |
 

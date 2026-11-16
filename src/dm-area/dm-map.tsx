@@ -69,7 +69,7 @@ import { useOnClickOutside } from "../hooks/use-on-click-outside";
 import { useAsyncClipboardApi } from "../hooks/use-async-clipboard-api";
 import { MapTokenEntity } from "../map-typings";
 import { useConfirmationDialog } from "../hooks/use-confirmation-dialog";
-import { applyFogRectangle } from "../canvas-draw-utilities";
+import { applyFogRectangle, midBetweenPoints } from "../canvas-draw-utilities";
 import { useResetState } from "../hooks/use-reset-state";
 import * as Button from "../button";
 import { useDebounceCallback } from "../hooks/use-debounce-callback";
@@ -86,7 +86,6 @@ import {
   TokenMarkerContextProvider,
   TokenMarkerMapTool,
 } from "../map-tools/token-marker-map-tool";
-import { NoteWindowActionsContext } from "./token-info-aside";
 import { ColorPickerInput } from "../color-picker-input";
 import { buttonGroup, useControls, useCreateStore, LevaInputs } from "leva";
 import { levaPluginIconPicker } from "../leva-plugin/leva-plugin-icon-picker";
@@ -130,7 +129,12 @@ import {
 } from "../undo-history";
 import { requestMapRender } from "../render-scheduler";
 import { RoomMapTool, RoomToolContext } from "../map-tools/room-map-tool";
-import { MapRoom, roomVertices, traceRoomPath } from "../map-rooms";
+import {
+  MapRoom,
+  roomVertices,
+  traceRoomPath,
+  isPointInRoom,
+} from "../map-rooms";
 import { randomHash } from "../utilities/random-hash";
 import { dmMap_MapUpdateRoomsMutation } from "./__generated__/dmMap_MapUpdateRoomsMutation.graphql";
 import type { WeatherType } from "../weather-types";
@@ -865,7 +869,9 @@ type RoomActionsContextValue = {
   draftLength: number;
   cancelDraft: () => void;
   finishDraft: () => void;
-  toggleRoom: (room: MapRoom, hide: boolean) => void;
+  /** `hide` absent : bascule selon l'état actuel de la pièce. */
+  toggleRoom: (room: MapRoom, hide?: boolean) => void;
+  isRoomRevealed: (room: MapRoom) => boolean;
   updateRoom: (roomId: string, patch: Partial<MapRoom>) => void;
   deleteRoom: (roomId: string) => void;
 };
@@ -882,7 +888,7 @@ const RoomSettings = (): React.ReactElement => {
       <RoomPanelTitle>Pièces</RoomPanelTitle>
       <RoomHint>
         {actions.draftLength === 0
-          ? "Cliquez sur la carte pour poser les coins d'une pièce. Un clic dans une pièce déjà tracée la révèle."
+          ? "Cliquez sur la carte pour poser les coins d'une pièce. Un clic dans une pièce déjà tracée la révèle ou la remasque."
           : actions.draftLength < 3
           ? "Continuez à poser les coins de la pièce."
           : "Recliquez sur le premier coin pour fermer la pièce."}
@@ -915,18 +921,26 @@ const RoomSettings = (): React.ReactElement => {
                   }
                 }}
               />
-              <RoomIconButton
-                title="Révéler cette pièce aux joueurs"
-                onClick={() => actions.toggleRoom(room, false)}
-              >
-                <Icon.Eye boxSize="14px" />
-              </RoomIconButton>
-              <RoomIconButton
-                title="Remasquer cette pièce"
-                onClick={() => actions.toggleRoom(room, true)}
-              >
-                <Icon.EyeOff boxSize="14px" />
-              </RoomIconButton>
+              {(() => {
+                const isRevealed = actions.isRoomRevealed(room);
+                return (
+                  <RoomIconButton
+                    title={
+                      isRevealed
+                        ? "Pièce révélée. Cliquer pour la remasquer."
+                        : "Pièce masquée. Cliquer pour la révéler."
+                    }
+                    aria-pressed={isRevealed}
+                    onClick={() => actions.toggleRoom(room)}
+                  >
+                    {isRevealed ? (
+                      <Icon.Eye boxSize="14px" />
+                    ) : (
+                      <Icon.EyeOff boxSize="14px" />
+                    )}
+                  </RoomIconButton>
+                );
+              })()}
               <RoomIconButton
                 isOn={!room.hasWeather}
                 title={
@@ -1172,7 +1186,6 @@ export const DmMap = (props: {
   hideMap: () => void;
   showMapModal: () => void;
   loadMap: (mapId: string) => void;
-  openNotes: () => void;
   openMediaLibrary: (tab: "characters" | "images") => void;
   sendLiveMap: (image: HTMLCanvasElement) => Promise<SendLiveMapResult>;
   saveFogProgress: (image: HTMLCanvasElement) => void;
@@ -1338,6 +1351,9 @@ export const DmMap = (props: {
   // Le brouillard est mémorisé en PNG compressé (quelques dizaines de Ko)
   // plutôt qu'en pixels bruts, qui pèseraient des dizaines de Mo par étape.
   const lastFogSnapshotRef = React.useRef<Promise<Blob | null> | null>(null);
+  // Incrémenté à chaque changement du brouillard : ce qui en dépend à l'écran
+  // (l'état révélé / masqué des pièces) se redessine.
+  const [, setFogVersion] = React.useState(0);
   const captureFog = (canvas: HTMLCanvasElement) =>
     new Promise<Blob | null>((resolve) => canvas.toBlob(resolve));
 
@@ -1381,6 +1397,7 @@ export const DmMap = (props: {
     bitmap.close();
     context.fogTexture.needsUpdate = true;
     lastFogSnapshotRef.current = snapshot;
+    setFogVersion((version) => version + 1);
     requestMapRender();
     await persistFogRef.current(context.fogCanvas);
   };
@@ -1393,6 +1410,7 @@ export const DmMap = (props: {
     const before = lastFogSnapshotRef.current;
     const after = captureFog(canvas);
     lastFogSnapshotRef.current = after;
+    setFogVersion((version) => version + 1);
     if (before !== null) {
       undoHistory.push({
         label,
@@ -1486,12 +1504,45 @@ export const DmMap = (props: {
     ]);
   };
 
-  /** Révèle (ou remasque) exactement le polygone de la pièce. */
-  const toggleRoom = (room: MapRoom, hide: boolean) => {
+  /**
+   * La pièce est-elle révélée ? On le lit directement dans le brouillard, en
+   * un point intérieur de la pièce : c'est donc juste même si elle a été
+   * révélée au pinceau.
+   */
+  const isRoomRevealed = (room: MapRoom): boolean => {
+    const context = controlRef.current?.getContext();
+    if (!context) {
+      return false;
+    }
+    const vertices = roomVertices(room.points);
+    const center: [number, number] = [
+      vertices.reduce((sum, vertex) => sum + vertex[0], 0) / vertices.length,
+      vertices.reduce((sum, vertex) => sum + vertex[1], 0) / vertices.length,
+    ];
+    // pour une pièce en « L », le centre peut tomber dehors : on se rapproche
+    // alors d'un coin jusqu'à être à l'intérieur
+    const inside =
+      [
+        center,
+        ...vertices.map((vertex) => midBetweenPoints(center, vertex)),
+      ].find((point) => isPointInRoom(point, room.points)) ?? center;
+    const [x, y] = context.helper.coordinates.imageToCanvas(inside);
+    const pixel = context.fogCanvas
+      .getContext("2d")!
+      .getImageData(Math.round(x), Math.round(y), 1, 1).data;
+    return pixel[3] < 128;
+  };
+
+  /**
+   * Révèle ou remasque exactement le polygone de la pièce.
+   * Sans `hide`, bascule selon son état actuel.
+   */
+  const toggleRoom = (room: MapRoom, hideOption?: boolean) => {
     const context = controlRef.current?.getContext();
     if (!context) {
       return;
     }
+    const hide = hideOption ?? isRoomRevealed(room);
     ensureFogBaseline();
     const canvasContext = context.fogCanvas.getContext("2d")!;
     canvasContext.save();
@@ -1552,6 +1603,7 @@ export const DmMap = (props: {
     cancelDraft: () => setRoomDraft([]),
     finishDraft: () => createRoom(roomDraft),
     toggleRoom,
+    isRoomRevealed,
     updateRoom: (roomId, patch) =>
       saveRooms(
         rooms.map((room) => (room.id === roomId ? { ...room, ...patch } : room))
@@ -1855,15 +1907,6 @@ export const DmMap = (props: {
       run: () => setIsNotesOpen(true),
     },
     {
-      // l'ancien carnet (documents liés aux tokens) reste accessible ici
-      id: "notebook",
-      title: "Carnet de notes",
-      group: "Ouvrir",
-      icon: <Icon.BookOpen boxSize="16px" />,
-      keywords: "editeur documents markdown",
-      run: props.openNotes,
-    },
-    {
       id: "grid",
       title: "Configurer la grille",
       group: "Ouvrir",
@@ -2011,7 +2054,6 @@ export const DmMap = (props: {
               AreaSelectContext,
               TokenMarkerContext,
               RoomToolContext,
-              NoteWindowActionsContext,
               ReactRelayContext,
               UpdateTokenContext,
               IsDungeonMasterContext,
@@ -2225,7 +2267,7 @@ export const DmMap = (props: {
                 <Toolbar.Item isOpen={isPaletteOpen}>
                   <Toolbar.Button
                     onClick={() => setIsPaletteOpen(true)}
-                    title="Chercher une action, une carte, une note"
+                    title="Chercher une action ou une carte"
                   >
                     <Icon.Search boxSize="16px" />
                     <Icon.Label>Actions</Icon.Label>

@@ -47,7 +47,6 @@ import {
   useCreateStore,
   LevaInputs,
 } from "leva";
-import { levaPluginNoteReference } from "./leva-plugin/leva-plugin-note-reference";
 import { levaPluginTokenImage } from "./leva-plugin/leva-plugin-token-image";
 import { defaultFactionForTokenType } from "./dm-area/combat/combat-faction";
 import { mapView_SaveAsLibraryCharacterMutation } from "./__generated__/mapView_SaveAsLibraryCharacterMutation.graphql";
@@ -252,7 +251,6 @@ const TokenRendererMapTokenFragment = graphql`
       title
       url
     }
-    referenceId
   }
 `;
 
@@ -518,18 +516,6 @@ const TokenRenderer = (props: {
         },
         transient: false,
       },
-      referenceId: levaPluginNoteReference({
-        value: token.referenceId ?? null,
-        onChange: (referenceId: string | null, _, { initial, fromPanel }) => {
-          if (initial || !fromPanel) {
-            return;
-          }
-          updateToken(props.id, {
-            reference: referenceId ? { type: "note", id: referenceId } : null,
-          });
-        },
-        transient: false,
-      }),
       tokenImageId: levaPluginTokenImage({
         value: token.tokenImage?.id ?? null,
         onChange: (tokenImageId: null | string, _, { initial, fromPanel }) => {
@@ -607,7 +593,6 @@ const TokenRenderer = (props: {
       isLocked: token.isLocked,
       isMovableByPlayers: token.isMovableByPlayers,
       isVisibleForPlayers: token.isVisibleForPlayers,
-      referenceId: token.referenceId,
       tokenImageId: token.tokenImage?.id ?? null,
       tokenType: token.tokenType ?? "marker",
       isAlive: token.isAlive ?? true,
@@ -637,7 +622,6 @@ const TokenRenderer = (props: {
     token.color,
     token.isMovableByPlayers,
     token.isVisibleForPlayers,
-    token.referenceId,
     token.tokenImage?.id,
     token.rotation,
     token.tokenType,

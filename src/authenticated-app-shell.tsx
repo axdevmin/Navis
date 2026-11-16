@@ -10,10 +10,6 @@ import { useChatSoundsAndUnreadCount } from "./chat/chat";
 import { useLogInMutation } from "./chat/log-in-mutation";
 import styled from "@emotion/styled/macro";
 import { openCommandPalette } from "./dm-area/command-palette";
-import {
-  TokenInfoAside,
-  NoteWindowContextProvider,
-} from "./dm-area/token-info-aside";
 import { SoundSettingsProvider } from "./sound-settings";
 import { animated, useSpring } from "react-spring";
 import type { SpringValue } from "react-spring";
@@ -149,55 +145,52 @@ const AuthenticatedAppShellRenderer: React.FC<{ isMapOnly: boolean }> = ({
 
   return (
     <ChatPositionContext.Provider value={chatPositionContextValue}>
-      <NoteWindowContextProvider>
-        <Container>
-          <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-            {children}
-          </div>
-          <SplashShareImage />
-          {isMapOnly === false ? (
-            <React.Fragment>
-              <animated.div
-                style={{
-                  display: "flex",
-                  position: "absolute",
-                  right: 0,
-                  height: "100%",
-                  transform: chatPosition.x.to(
-                    (value) => `translateX(${value}px)`
-                  ),
-                  pointerEvents: "none",
-                }}
-              >
-                <IconContainer>
-                  <ChatToggleButton
-                    hasUnreadMessages={hasUnreadMessages}
-                    onClick={() => {
-                      resetUnreadMessages();
-                      setShowChatState((showChat) =>
-                        showChat === "show" ? "hidden" : "show"
-                      );
-                    }}
-                  />
-                </IconContainer>
-                <Aside width={chatWidth}>
-                  <Chat toggleShowDiceRollNotes={toggleShowDiceRollNotes} />
-                </Aside>
-              </animated.div>
-            </React.Fragment>
-          ) : null}
-        </Container>
+      <Container>
+        <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+          {children}
+        </div>
+        <SplashShareImage />
         {isMapOnly === false ? (
           <React.Fragment>
-            <TokenInfoAside />
-            {diceRollNotesState === "show" ? (
-              <React.Suspense fallback={null}>
-                <DiceRollNotes close={toggleShowDiceRollNotes} />
-              </React.Suspense>
-            ) : null}
+            <animated.div
+              style={{
+                display: "flex",
+                position: "absolute",
+                right: 0,
+                height: "100%",
+                transform: chatPosition.x.to(
+                  (value) => `translateX(${value}px)`
+                ),
+                pointerEvents: "none",
+              }}
+            >
+              <IconContainer>
+                <ChatToggleButton
+                  hasUnreadMessages={hasUnreadMessages}
+                  onClick={() => {
+                    resetUnreadMessages();
+                    setShowChatState((showChat) =>
+                      showChat === "show" ? "hidden" : "show"
+                    );
+                  }}
+                />
+              </IconContainer>
+              <Aside width={chatWidth}>
+                <Chat toggleShowDiceRollNotes={toggleShowDiceRollNotes} />
+              </Aside>
+            </animated.div>
           </React.Fragment>
         ) : null}
-      </NoteWindowContextProvider>
+      </Container>
+      {isMapOnly === false ? (
+        <React.Fragment>
+          {diceRollNotesState === "show" ? (
+            <React.Suspense fallback={null}>
+              <DiceRollNotes close={toggleShowDiceRollNotes} />
+            </React.Suspense>
+          ) : null}
+        </React.Fragment>
+      ) : null}
     </ChatPositionContext.Provider>
   );
 };

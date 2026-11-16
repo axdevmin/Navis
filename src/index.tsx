@@ -1,5 +1,4 @@
 import * as React from "react";
-import { loader } from "@monaco-editor/react";
 import { render } from "react-dom";
 import { Global, CacheProvider } from "@emotion/react";
 import createCache from "@emotion/cache";
@@ -13,19 +12,13 @@ const darkTheme = extendTheme({
     },
   },
 });
-import { getUrlPrefix, buildUrl } from "./public-url";
+import { getUrlPrefix } from "./public-url";
 import { globalStyles } from "./global-styles";
 import { Modal } from "./modal";
 import * as UserStyleSheetOrchestrator from "./user-style-sheet-orchestrator";
 import "@fontsource-variable/inter/wght.css";
 import { registerSoundPlayback } from "./register-sound-playback";
 import { ErrorBoundary } from "./error-boundary";
-
-loader.config({
-  paths: {
-    vs: buildUrl(`/monaco-editor/${import.meta.env.VITE_MONACO_VERSION}/vs`),
-  },
-});
 
 const emotionCache = createCache({ key: "chache" });
 emotionCache.compat = true;
