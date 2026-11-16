@@ -1,4 +1,6 @@
 import * as React from "react";
+import { ds } from "../../design-system";
+import { LibraryHeader } from "../library/library-tabs";
 import { Modal, ModalDialogSize } from "../../modal";
 import * as Icon from "../../feather-icons";
 import * as Button from "../../button";
@@ -12,11 +14,22 @@ import { ImageLightBoxModal } from "../../image-lightbox-modal";
 import { useShareImageAction } from "../../hooks/use-share-image-action";
 import { useSplashShareImageAction } from "../../hooks/use-splash-share-image-action";
 import { InputGroup } from "../../input";
+import { LoadingSpinner } from "../../loading-spinner";
 import { useSelectFileDialog } from "../../hooks/use-select-file-dialog";
 import { useAccessToken } from "../../hooks/use-access-token";
+import { uploadFile } from "../../upload-file";
+import { ProgressBar } from "../../progress-bar";
+import * as HorizontalNavigation from "../../horizontal-navigation";
+import { CharacterLibraryTab } from "../library/character-library-tab";
 
 type MediaLibraryProps = {
   onClose: () => void;
+  mapId: string | null;
+  initialTab: "characters" | "images";
+  /** Revenir au rayon des cartes. */
+  onSelectMaps: () => void;
+  /** Où poser un token ajouté depuis la bibliothèque (coordonnées image). */
+  getDropPoint: () => [number, number];
 };
 
 type MediaLibraryItem = {
@@ -25,21 +38,26 @@ type MediaLibraryItem = {
   title: string;
 };
 
+// Must match the LIMIT used by the backend list endpoint.
+const PAGE_SIZE = 20;
+
+const isVideoPath = (path: string) => /\.(mp4|webm|ogg|mov)$/i.test(path);
+
 type MediaLibraryState =
   | {
       mode: "LOADING";
       items: null;
-      selectedFileId: string | null;
+      hasMore: boolean;
     }
   | {
       mode: "LOADED";
       items: Array<MediaLibraryItem>;
-      selectedFileId: string | null;
+      hasMore: boolean;
     }
   | {
       mode: "LOADING_MORE";
       items: Array<MediaLibraryItem>;
-      selectedFileId: string | null;
+      hasMore: boolean;
     };
 
 type MediaLibraryAction =
@@ -48,6 +66,9 @@ type MediaLibraryAction =
       data: {
         items: Array<MediaLibraryItem>;
       };
+    }
+  | {
+      type: "LOAD_MORE_START";
     }
   | {
       type: "LOAD_MORE_RESULT";
@@ -81,9 +102,24 @@ const stateReducer: React.Reducer<MediaLibraryState, MediaLibraryAction> = (
   switch (action.type) {
     case "LOAD_INITIAL_RESULT": {
       return {
-        ...state,
-        mode: "LOADED",
+        mode: "LOADED" as const,
         items: action.data.items,
+        hasMore: action.data.items.length >= PAGE_SIZE,
+      };
+    }
+    case "LOAD_MORE_START": {
+      if (state.mode !== "LOADED") return state;
+      return {
+        ...state,
+        mode: "LOADING_MORE" as const,
+      };
+    }
+    case "LOAD_MORE_RESULT": {
+      if (state.mode === "LOADING") return state;
+      return {
+        mode: "LOADED" as const,
+        items: [...state.items, ...action.data.items],
+        hasMore: action.data.items.length >= PAGE_SIZE,
       };
     }
     case "DELETE_ITEM_DONE": {
@@ -93,14 +129,6 @@ const stateReducer: React.Reducer<MediaLibraryState, MediaLibraryAction> = (
         items: state.items.filter(
           (item) => item.id !== action.data.deletedItemId
         ),
-      };
-    }
-    case "LOAD_MORE_RESULT": {
-      if (state.mode === "LOADING") return state;
-      return {
-        ...state,
-        mode: "LOADED",
-        items: [...state.items, ...action.data.items],
       };
     }
     case "UPDATE_ITEM_DONE": {
@@ -125,47 +153,73 @@ const stateReducer: React.Reducer<MediaLibraryState, MediaLibraryAction> = (
 const initialState: MediaLibraryState = {
   mode: "LOADING",
   items: null,
-  selectedFileId: null,
+  hasMore: true,
 };
 
-export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onClose }) => {
+export const MediaLibrary: React.FC<MediaLibraryProps> = ({
+  onClose,
+  mapId,
+  initialTab,
+  onSelectMaps,
+  getDropPoint,
+}) => {
+  const [activeTab, setActiveTab] = React.useState<"characters" | "images">(
+    initialTab
+  );
   const [state, dispatch] = React.useReducer(stateReducer, initialState);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = React.useState<number | null>(
+    null
+  );
+  const isUploading = uploadProgress !== null;
   const getIsMounted = useGetIsMounted();
   const accessToken = useAccessToken();
 
-  useAsyncEffect(function* (onCancel, cast) {
-    const task = sendRequest({
-      method: "GET",
-      headers: {
-        Authorization: accessToken ? `Bearer ${accessToken}` : null,
-      },
-      url: buildApiUrl("/images"),
-    });
-    onCancel(task.abort);
-    const result = yield* cast(task.done);
-    if (result.type === "success") {
-      const jsonResponse = JSON.parse(result.data);
-      dispatch({
-        type: "LOAD_INITIAL_RESULT",
-        data: {
-          items: jsonResponse.data.list,
-        },
+  const authHeaders = React.useMemo(
+    () => ({
+      Authorization: accessToken ? `Bearer ${accessToken}` : null,
+    }),
+    [accessToken]
+  );
+
+  useAsyncEffect(
+    function* (onCancel, cast) {
+      const task = sendRequest({
+        method: "GET",
+        headers: authHeaders,
+        url: buildApiUrl("/images"),
       });
-    }
-  }, []);
+      onCancel(task.abort);
+      const result = yield* cast(task.done);
+      if (result.type === "success") {
+        const jsonResponse = JSON.parse(result.data);
+        dispatch({
+          type: "LOAD_INITIAL_RESULT",
+          data: {
+            items: jsonResponse.data.list,
+          },
+        });
+      }
+    },
+    [authHeaders]
+  );
 
   const fetchMoreTask = React.useRef<ISendRequestTask | null>(null);
-  React.useEffect(() => fetchMoreTask?.current?.abort, []);
+  React.useEffect(
+    () => () => {
+      fetchMoreTask.current?.abort();
+    },
+    []
+  );
 
   const fetchMore = React.useCallback(() => {
-    if (state.mode !== "LOADED") return;
+    if (state.mode !== "LOADED" || state.hasMore === false) return;
     fetchMoreTask.current?.abort();
+    dispatch({ type: "LOAD_MORE_START" });
 
     const task = sendRequest({
       method: "GET",
-      headers: {
-        Authorization: accessToken ? `Bearer ${accessToken}` : null,
-      },
+      headers: authHeaders,
       url: buildApiUrl(`/images?offset=${state.items.length}`),
     });
     fetchMoreTask.current = task;
@@ -182,30 +236,31 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onClose }) => {
         });
       }
     });
-  }, [state]);
+  }, [state, authHeaders, getIsMounted]);
 
-  const deleteImageAction = React.useCallback((id: string) => {
-    const task = sendRequest({
-      method: "DELETE",
-      headers: {
-        Authorization: accessToken ? `Bearer ${accessToken}` : null,
-      },
-      url: buildApiUrl(`/images/${id}`),
-    });
+  const deleteImageAction = React.useCallback(
+    (id: string) => {
+      const task = sendRequest({
+        method: "DELETE",
+        headers: authHeaders,
+        url: buildApiUrl(`/images/${id}`),
+      });
 
-    task.done.then((result) => {
-      if (getIsMounted() === false) return;
-      if (result.type === "success") {
-        const jsonResponse = JSON.parse(result.data);
-        dispatch({
-          type: "DELETE_ITEM_DONE",
-          data: {
-            deletedItemId: jsonResponse.data.deletedImageId,
-          },
-        });
-      }
-    });
-  }, []);
+      task.done.then((result) => {
+        if (getIsMounted() === false) return;
+        if (result.type === "success") {
+          const jsonResponse = JSON.parse(result.data);
+          dispatch({
+            type: "DELETE_ITEM_DONE",
+            data: {
+              deletedItemId: jsonResponse.data.deletedImageId,
+            },
+          });
+        }
+      });
+    },
+    [authHeaders, getIsMounted]
+  );
 
   const updateImageAction = React.useCallback(
     (id: string, { title }: { title: string }) => {
@@ -213,7 +268,7 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onClose }) => {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: accessToken ? `Bearer ${accessToken}` : null,
+          ...authHeaders,
         },
         url: buildApiUrl(`/images/${id}`),
         body: JSON.stringify({
@@ -234,7 +289,7 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onClose }) => {
         }
       });
     },
-    []
+    [authHeaders, getIsMounted]
   );
 
   const onScroll = useInvokeOnScrollEnd(
@@ -242,36 +297,64 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onClose }) => {
       if (state.mode === "LOADED") {
         fetchMore();
       }
-    }, [state])
+    }, [state, fetchMore])
   );
 
   const [reactTreeNode, showSelectFileDialog] = useSelectFileDialog(
-    React.useCallback((file) => {
-      const formData = new FormData();
-      formData.append("file", file);
+    React.useCallback(
+      (file) => {
+        setUploadError(null);
+        setUploadProgress(0);
+        const formData = new FormData();
+        formData.append("file", file);
 
-      const task = sendRequest({
-        url: buildApiUrl("/images"),
-        method: "POST",
-        body: formData,
-        headers: {
-          Authorization: accessToken ? `Bearer ${accessToken}` : null,
-        },
-      });
+        const task = uploadFile({
+          url: buildApiUrl("/images"),
+          method: "POST",
+          body: formData,
+          headers: authHeaders,
+          onProgress: (progress) => {
+            if (getIsMounted()) setUploadProgress(progress.fraction);
+          },
+        });
 
-      task.done.then((response) => {
-        if (getIsMounted() === false) return;
-        if (response.type === "success") {
-          const result = JSON.parse(response.data);
-          dispatch({
-            type: "CREATE_ITEM_DONE",
-            data: {
-              item: result.data.item,
-            },
-          });
-        }
-      });
-    }, [])
+        task.done.then((response) => {
+          if (getIsMounted() === false) return;
+          setUploadProgress(null);
+          if (response.type === "abort") return;
+          if (response.type === "success") {
+            let result: any = null;
+            try {
+              result = JSON.parse(response.responseText);
+            } catch {
+              result = null;
+            }
+            if (result?.data?.item) {
+              dispatch({
+                type: "CREATE_ITEM_DONE",
+                data: {
+                  item: result.data.item,
+                },
+              });
+              return;
+            }
+          }
+          let message = "L'import du fichier a échoué.";
+          if (response.type === "error" && response.responseText) {
+            try {
+              const parsed = JSON.parse(response.responseText);
+              if (typeof parsed?.error === "string") {
+                message = parsed.error;
+              }
+            } catch {
+              // keep the generic message
+            }
+          }
+          setUploadError(message);
+        });
+      },
+      [authHeaders, getIsMounted]
+    )
   );
 
   return (
@@ -279,51 +362,113 @@ export const MediaLibrary: React.FC<MediaLibraryProps> = ({ onClose }) => {
       <Content
         onClick={(ev) => ev.stopPropagation()}
         tabIndex={1}
-        style={{ maxWidth: 1600 }}
+        style={{ maxWidth: 1024 }}
       >
-        <Modal.Header>
-          <Modal.Heading2>
-            <Icon.Image boxSize="28px" /> Media Library
-          </Modal.Heading2>
-          <div style={{ flex: 1, textAlign: "right" }}>
-            <Button.Tertiary
-              tabIndex={1}
-              style={{ marginLeft: 8 }}
-              onClick={onClose}
+        <LibraryHeader
+          activeTab={activeTab}
+          onSelectTab={(tab) => {
+            if (tab === "maps") onSelectMaps();
+            else setActiveTab(tab);
+          }}
+          onClose={onClose}
+        />
+        {activeTab === "characters" ? (
+          <Modal.Body style={{ flex: 1, overflowY: "hidden" }}>
+            <CharacterLibraryTab mapId={mapId} getDropPoint={getDropPoint} />
+          </Modal.Body>
+        ) : (
+          <>
+            <Modal.Body
+              style={{ flex: 1, overflowY: "scroll" }}
+              onScroll={onScroll}
             >
-              Close
-            </Button.Tertiary>
-          </div>
-        </Modal.Header>
-        <Modal.Body
-          style={{ flex: 1, overflowY: "scroll" }}
-          onScroll={onScroll}
-        >
-          <Grid>
-            {state.mode === "LOADING"
-              ? null
-              : state.items.map((item) => (
-                  <Item
-                    item={item}
-                    key={item.id}
-                    deleteItem={() => deleteImageAction(item.id)}
-                    updateItem={(opts) => updateImageAction(item.id, opts)}
+              {uploadError ? (
+                <ErrorBanner role="alert">
+                  <span>{uploadError}</span>
+                  <Button.Tertiary
+                    small
+                    iconOnly
+                    title="Masquer"
+                    onClick={() => setUploadError(null)}
+                  >
+                    <Icon.X boxSize="16px" />
+                  </Button.Tertiary>
+                </ErrorBanner>
+              ) : null}
+              {isUploading ? (
+                <UploadProgressContainer>
+                  <ProgressBar
+                    value={uploadProgress}
+                    label="Envoi du fichier…"
                   />
-                ))}
-          </Grid>
-        </Modal.Body>
-        <Modal.Footer>
-          <Modal.Actions>
-            <Modal.ActionGroup>
-              <div>
-                <Button.Primary onClick={showSelectFileDialog} role="button">
-                  <Icon.Plus boxSize="24px" />
-                  <span>Upload new File</span>
-                </Button.Primary>
-              </div>
-            </Modal.ActionGroup>
-          </Modal.Actions>
-        </Modal.Footer>
+                </UploadProgressContainer>
+              ) : null}
+              {state.mode === "LOADING" ? (
+                <CenteredState>
+                  <LoadingSpinner state="inProgress" />
+                </CenteredState>
+              ) : state.items.length === 0 ? (
+                <CenteredState>
+                  <Icon.Image boxSize="48px" color="#3c4257" />
+                  <EmptyStateTitle>
+                    Aucun média dans la bibliothèque
+                  </EmptyStateTitle>
+                  <EmptyStateText>
+                    Importez des images, GIF ou vidéos pour les partager avec
+                    vos joueurs.
+                  </EmptyStateText>
+                  <div style={{ marginTop: 16 }}>
+                    <Button.Primary
+                      onClick={showSelectFileDialog}
+                      disabled={isUploading}
+                    >
+                      <Icon.Plus boxSize="20px" />
+                      <span>Importer un fichier</span>
+                    </Button.Primary>
+                  </div>
+                </CenteredState>
+              ) : (
+                <>
+                  <Grid>
+                    {state.items.map((item) => (
+                      <Item
+                        item={item}
+                        key={item.id}
+                        deleteItem={() => deleteImageAction(item.id)}
+                        updateItem={(opts) => updateImageAction(item.id, opts)}
+                      />
+                    ))}
+                  </Grid>
+                  {state.mode === "LOADING_MORE" ? (
+                    <CenteredState style={{ minHeight: 80 }}>
+                      <LoadingSpinner state="inProgress" />
+                    </CenteredState>
+                  ) : null}
+                </>
+              )}
+            </Modal.Body>
+            <Modal.Footer>
+              <Modal.Actions>
+                <Modal.ActionGroup>
+                  <div>
+                    <Button.Primary
+                      onClick={showSelectFileDialog}
+                      role="button"
+                      disabled={isUploading}
+                    >
+                      <Icon.Plus boxSize="24px" />
+                      <span>
+                        {isUploading
+                          ? "Envoi en cours…"
+                          : "Importer un fichier"}
+                      </span>
+                    </Button.Primary>
+                  </div>
+                </Modal.ActionGroup>
+              </Modal.Actions>
+            </Modal.Footer>
+          </>
+        )}
         {reactTreeNode}
       </Content>
     </Modal>
@@ -339,33 +484,49 @@ const Item: React.FC<{
   const [showEditModal, setShowEditModal] = React.useState(false);
   const shareImage = useShareImageAction();
   const splashShareImage = useSplashShareImageAction();
+  const isVideo = isVideoPath(item.path);
+  const mediaUrl = buildApiUrl(`/images/${item.id}`);
 
   return (
     <ListItem>
-      <ListItemImageContainer onClick={() => setShowLightBoxImage(true)}>
-        <ListItemImage src={buildApiUrl(`/images/${item.id}`)} />
+      <ListItemImageContainer
+        onClick={() => setShowLightBoxImage(true)}
+        title="Agrandir"
+      >
+        {isVideo ? (
+          <>
+            <ListItemVideo src={mediaUrl} muted preload="metadata" />
+            <VideoBadge>
+              <Icon.Play boxSize="12px" /> Vidéo
+            </VideoBadge>
+          </>
+        ) : (
+          <ListItemImage src={mediaUrl} loading="lazy" />
+        )}
       </ListItemImageContainer>
-      <ListItemTitle>{item.title}</ListItemTitle>
+      <ListItemTitle title={item.title}>{item.title}</ListItemTitle>
       <Menu data-menu>
         <Button.Primary
           small
-          title="Edit"
+          title="Modifier"
           iconOnly
           onClick={() => setShowEditModal(true)}
         >
           <Icon.Edit boxSize="16px" />
         </Button.Primary>
+        {isVideo ? null : (
+          <Button.Primary
+            small
+            title="Montrer ce média aux joueurs, en plein écran"
+            onClick={() => splashShareImage(item.id)}
+          >
+            <Icon.Share boxSize="14px" />
+            <span>Montrer</span>
+          </Button.Primary>
+        )}
         <Button.Primary
           small
-          title="Splash Share"
-          iconOnly
-          onClick={() => splashShareImage(item.id)}
-        >
-          <Icon.Share boxSize="16px" />
-        </Button.Primary>
-        <Button.Primary
-          small
-          title="Share To Chat"
+          title="Partager dans le chat"
           iconOnly
           onClick={() => shareImage(item.id)}
         >
@@ -373,7 +534,7 @@ const Item: React.FC<{
         </Button.Primary>
         <Button.Primary
           small
-          title="Maximize"
+          title="Agrandir"
           iconOnly
           onClick={() => setShowLightBoxImage(true)}
         >
@@ -381,22 +542,48 @@ const Item: React.FC<{
         </Button.Primary>
       </Menu>
       {showLightboxImage ? (
-        <ImageLightBoxModal
-          src={buildApiUrl(`/images/${item.id}`)}
-          close={() => setShowLightBoxImage(false)}
-        />
+        isVideo ? (
+          <VideoLightBoxModal
+            src={mediaUrl}
+            close={() => setShowLightBoxImage(false)}
+          />
+        ) : (
+          <ImageLightBoxModal
+            src={mediaUrl}
+            close={() => setShowLightBoxImage(false)}
+          />
+        )
       ) : null}
       {showEditModal ? (
         <EditImageModal
           title={item.title}
           onClose={() => setShowEditModal(false)}
-          onDelete={deleteItem}
+          onDelete={() => {
+            setShowEditModal(false);
+            deleteItem();
+          }}
           onConfirm={({ title }) => {
             updateItem({ title });
           }}
         />
       ) : null}
     </ListItem>
+  );
+};
+
+const VideoLightBoxModal: React.FC<{
+  src: string;
+  close: () => void;
+}> = ({ src, close }) => {
+  return (
+    <Modal onClickOutside={close} onPressEscape={close}>
+      <LightBoxVideo
+        src={src}
+        controls
+        autoPlay
+        onClick={(ev) => ev.stopPropagation()}
+      />
+    </Modal>
   );
 };
 
@@ -407,6 +594,7 @@ const EditImageModal: React.FC<{
   onConfirm: (opts: { title: string }) => void;
 }> = ({ title, onClose, onConfirm, onDelete }) => {
   const [inputValue, setInputValue] = React.useState(title);
+  const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
 
   const onChangeInputValue = React.useCallback(
     (ev) => {
@@ -419,7 +607,7 @@ const EditImageModal: React.FC<{
     <Modal onClickOutside={onClose} onPressEscape={onClose}>
       <Modal.Dialog size={ModalDialogSize.SMALL}>
         <Modal.Header>
-          <Modal.Heading3>Modifier l'image</Modal.Heading3>
+          <Modal.Heading3>Modifier le média</Modal.Heading3>
         </Modal.Header>
         <Modal.Body>
           <InputGroup
@@ -429,16 +617,44 @@ const EditImageModal: React.FC<{
             onChange={onChangeInputValue}
             error={null}
           />
+          {isConfirmingDelete ? (
+            <DeleteConfirmText>
+              Supprimer définitivement ce média ? Cette action est irréversible.
+            </DeleteConfirmText>
+          ) : null}
         </Modal.Body>
         <Modal.Footer>
           <Modal.Actions>
             <Modal.ActionGroup left>
-              <div>
-                <Button.Tertiary onClick={onDelete} type="button" danger>
-                  <Icon.Trash boxSize="18px" />
-                  <span>Supprimer</span>
-                </Button.Tertiary>
-              </div>
+              {isConfirmingDelete ? (
+                <>
+                  <div>
+                    <Button.Tertiary
+                      onClick={() => setIsConfirmingDelete(false)}
+                      type="button"
+                    >
+                      <span>Annuler</span>
+                    </Button.Tertiary>
+                  </div>
+                  <div>
+                    <Button.Tertiary onClick={onDelete} type="button" danger>
+                      <Icon.Trash boxSize="18px" />
+                      <span>Confirmer la suppression</span>
+                    </Button.Tertiary>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <Button.Tertiary
+                    onClick={() => setIsConfirmingDelete(true)}
+                    type="button"
+                    danger
+                  >
+                    <Icon.Trash boxSize="18px" />
+                    <span>Supprimer</span>
+                  </Button.Tertiary>
+                </div>
+              )}
             </Modal.ActionGroup>
             <Modal.ActionGroup>
               <div>
@@ -478,10 +694,14 @@ const Menu = styled.span`
 `;
 
 const Content = styled.div`
-  width: 90vw;
-  height: 90vh;
-  background-color: #0d0f14;
-  border-radius: 5px;
+  /* même gabarit que le rayon des cartes : une seule et même fenêtre */
+  width: calc(100vw - 16px);
+  height: calc(80vh + 53px);
+  background-color: ${ds.colors.surface};
+  border: 1px solid ${ds.colors.borderStrong};
+  border-radius: 14px;
+  box-shadow: ${ds.shadows.lg};
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 `;
@@ -502,13 +722,15 @@ const ListItem = styled.div`
 
   background-color: transparent;
 
-  &:hover [data-menu] {
+  &:hover [data-menu],
+  &:focus-within [data-menu] {
     display: block;
   }
 `;
 
 const ListItemImageContainer = styled.button`
   display: block;
+  position: relative;
   border: none;
   background-color: transparent;
   height: 150px;
@@ -525,6 +747,77 @@ const ListItemImage = styled.img`
   max-height: 150px;
 `;
 
+const ListItemVideo = styled.video`
+  max-width: 100%;
+  max-height: 150px;
+`;
+
+const VideoBadge = styled.span`
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  font-size: 11px;
+  pointer-events: none;
+`;
+
+const LightBoxVideo = styled.video`
+  max-width: 90vw;
+  max-height: 90vh;
+`;
+
 const ListItemTitle = styled.div`
   padding-top: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const CenteredState = styled.div`
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 24px;
+`;
+
+const EmptyStateTitle = styled.div`
+  margin-top: 16px;
+  font-size: 18px;
+  font-weight: bold;
+`;
+
+const EmptyStateText = styled.div`
+  margin-top: 8px;
+  color: #a0a6b8;
+`;
+
+const UploadProgressContainer = styled.div`
+  margin: 8px 16px;
+`;
+
+const ErrorBanner = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 16px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: rgba(220, 38, 38, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  color: #fca5a5;
+`;
+
+const DeleteConfirmText = styled.p`
+  margin-top: 12px;
+  color: #fca5a5;
 `;

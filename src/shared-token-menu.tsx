@@ -1,31 +1,23 @@
 import * as React from "react";
-import { animated, to } from "@react-spring/web";
-import { Box } from "@chakra-ui/react";
 import { useControls, useCreateStore, LevaInputs } from "leva";
 import graphql from "babel-plugin-relay/macro";
-import { useMutation, useQuery } from "relay-hooks";
+import { useMutation } from "relay-hooks";
 import create from "zustand";
 import { persist } from "zustand/middleware";
 import * as Json from "fp-ts/Json";
 import { flow, identity } from "fp-ts/function";
 import * as E from "fp-ts/Either";
 import * as io from "io-ts";
-import { ThemedLevaPanel } from "./themed-leva-panel";
-import { ChatPositionContext } from "./authenticated-app-shell";
+import { TokenInspector } from "./token-inspector";
 import { useSelectedItems, usePropertiesPanel } from "./shared-token-state";
 import { levaPluginTokenImage } from "./leva-plugin/leva-plugin-token-image";
 import type { sharedTokenMenuUpdateManyMapTokenMutation } from "./__generated__/sharedTokenMenuUpdateManyMapTokenMutation.graphql";
-import type { sharedTokenMenuReferenceNoteQuery } from "./__generated__/sharedTokenMenuReferenceNoteQuery.graphql";
 
-import { State, StoreType } from "leva/dist/declarations/src/types";
-import { levaPluginNotePreview } from "./leva-plugin/leva-plugin-note-preview";
+import { StoreType } from "leva/dist/declarations/src/types";
 
 const firstMapValue = <TItemValue extends any>(
   map: Map<any, TItemValue>
 ): TItemValue => map.values().next().value as TItemValue;
-
-const referenceIdSelector = (state: State): string | null =>
-  (state.data["referenceId"] as any)?.value ?? null;
 
 const TokenMenuExpandedStateModel = io.type({
   isTokenNoteDescriptionExpanded: io.boolean,
@@ -87,33 +79,26 @@ const tokenMenuStateSelector = (state: TokenMenuExpandedState) =>
 const useTokenMenuState = () =>
   useTokenMenuExpandedState(tokenMenuStateSelector);
 
-const tokenNoteDescriptionStateSelector = (state: TokenMenuExpandedState) =>
-  [
-    state.isTokenNoteDescriptionExpanded,
-    state.setIsTokenNoteDescriptionExpanded,
-  ] as const;
-const useTokenNoteDescriptionState = () =>
-  useTokenMenuExpandedState(tokenNoteDescriptionStateSelector);
-
 export const SharedTokenMenu = (props: { currentMapId: string }) => {
-  const chatPosition = React.useContext(ChatPositionContext);
   const [selectedItems] = useSelectedItems();
   const [propertiesPanelHidden] = usePropertiesPanel();
 
   if (propertiesPanelHidden || selectedItems.size === 0) return null;
 
   return (
-    <animated.div
+    <div
       style={{
+        // À gauche, sous le rail d'outils : le côté droit appartient au suivi
+        // de combat et au chat, les deux panneaux se recouvraient.
         position: "absolute",
-        bottom: 100,
-        right:
-          chatPosition !== null
-            ? to(chatPosition.x, (value) => -value + 10 + chatPosition.width)
-            : 10,
-        // @ts-ignore
-        zIndex: 1,
+        left: 70,
+        bottom: 64,
+        zIndex: 25,
         width: 300,
+        maxWidth: "calc(100vw - 82px)",
+        maxHeight: "calc(100% - 144px)",
+        overflowY: "auto",
+        borderRadius: 12,
       }}
       onKeyDown={(ev) => ev.stopPropagation()}
     >
@@ -122,104 +107,21 @@ export const SharedTokenMenu = (props: { currentMapId: string }) => {
       ) : (
         <MultiTokenPanel currentMapId={props.currentMapId} />
       )}
-    </animated.div>
-  );
-};
-
-const SharedTokenMenuReferenceNoteQuery = graphql`
-  query sharedTokenMenuReferenceNoteQuery($noteId: ID!) {
-    note(documentId: $noteId) {
-      id
-      documentId
-      title
-      content
-    }
-  }
-`;
-
-const TokenNotePreview = (props: {
-  id: string;
-  markdown: string;
-  title: string;
-}) => {
-  const store = useCreateStore();
-
-  useControls(
-    {
-      " ": levaPluginNotePreview({
-        value: {
-          id: props.id,
-          markdown: props.markdown,
-        },
-      }),
-    },
-    { store }
-  );
-
-  const [show, setShow] = useTokenNoteDescriptionState();
-
-  return (
-    <Box marginBottom="3">
-      <ThemedLevaPanel
-        store={store}
-        fill={true}
-        hideCopyButton
-        titleBar={{
-          filter: false,
-          drag: false,
-          title: props.title,
-        }}
-        collapsed={{
-          collapsed: !show,
-          onChange: (collapsed) => setShow(!collapsed),
-        }}
-      />
-    </Box>
-  );
-};
-
-const NoteAsidePreview = (props: { noteId: string }) => {
-  const noteProps = useQuery<sharedTokenMenuReferenceNoteQuery>(
-    SharedTokenMenuReferenceNoteQuery,
-    { noteId: props.noteId }
-  );
-
-  if (noteProps.data?.note == null) {
-    return null;
-  }
-
-  return (
-    <TokenNotePreview
-      id={noteProps.data.note.documentId}
-      markdown={noteProps.data.note.content}
-      title={noteProps.data.note.title}
-    />
+    </div>
   );
 };
 
 const SingleTokenPanels = (props: { store: StoreType }) => {
-  const referenceId = props.store.useStore(referenceIdSelector);
-
-  const [show, setShow] = useTokenMenuState();
+  // l'état replié / déplié est mémorisé d'une session à l'autre
+  const [isExpanded, setIsExpanded] = useTokenMenuState();
 
   return (
-    <>
-      {referenceId == null ? null : <NoteAsidePreview noteId={referenceId} />}
-      <ThemedLevaPanel
-        store={props.store}
-        fill={true}
-        hideCopyButton
-        titleBar={{
-          filter: false,
-          drag: false,
-          title: "Token Properties",
-        }}
-        collapsed={{
-          collapsed: !show,
-          onChange: (collapsed) => setShow(!collapsed),
-        }}
-      />
-    </>
+    <TokenInspector
+      store={props.store}
+      title="Token"
+      isCollapsed={!isExpanded}
+      onToggleCollapsed={() => setIsExpanded(!isExpanded)}
+    />
   );
 };
 
@@ -260,7 +162,7 @@ const MultiTokenPanel = (props: { currentMapId: string }) => {
       return {
         color: {
           type: LevaInputs.COLOR,
-          label: "Color",
+          label: "Couleur",
           value: firstItem.get("color"),
           onChange: (color: string, _, { initial, fromPanel }) => {
             if (initial || !fromPanel) {
@@ -286,7 +188,7 @@ const MultiTokenPanel = (props: { currentMapId: string }) => {
         },
         isVisibleForPlayers: {
           type: LevaInputs.BOOLEAN,
-          label: "Visible to players",
+          label: "Visibles par les joueurs",
           value: firstItem.get("isVisibleForPlayers"),
           onChange: (
             isVisibleForPlayers: boolean,
@@ -314,7 +216,7 @@ const MultiTokenPanel = (props: { currentMapId: string }) => {
         },
         isMovableByPlayers: {
           type: LevaInputs.BOOLEAN,
-          label: "Movable by players",
+          label: "Déplaçables par les joueurs",
           value: firstItem.get("isMovableByPlayers"),
           onChange: (
             isMovableByPlayers: boolean,
@@ -377,22 +279,14 @@ const MultiTokenPanel = (props: { currentMapId: string }) => {
     set({ tokenImageId });
   }, [tokenImageId]);
 
-  const [show, setShow] = useTokenMenuState();
+  const [isExpanded, setIsExpanded] = useTokenMenuState();
 
   return (
-    <ThemedLevaPanel
+    <TokenInspector
       store={store}
-      fill={true}
-      hideCopyButton
-      titleBar={{
-        filter: false,
-        drag: false,
-        title: `${selectedItems.size} Token selected`,
-      }}
-      collapsed={{
-        collapsed: !show,
-        onChange: (collapsed) => setShow(!collapsed),
-      }}
+      title={`${selectedItems.size} tokens sélectionnés`}
+      isCollapsed={!isExpanded}
+      onToggleCollapsed={() => setIsExpanded(!isExpanded)}
     />
   );
 };

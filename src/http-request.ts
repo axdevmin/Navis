@@ -31,6 +31,12 @@ type IResult =
   | {
       type: "success";
       data: string;
+      status: number;
+    }
+  | {
+      type: "server_error";
+      data: string;
+      status: number;
     };
 
 export type ISendRequestTask = {
@@ -65,10 +71,20 @@ export const sendRequest = (options: ISendRequestOptions): ISendRequestTask => {
     });
   });
   request.addEventListener("load", () => {
-    _resolve({
-      type: "success",
-      data: request.responseText,
-    });
+    const status = request.status;
+    if (status >= 200 && status < 300) {
+      _resolve({
+        type: "success",
+        data: request.responseText,
+        status,
+      });
+    } else {
+      _resolve({
+        type: "server_error",
+        data: request.responseText,
+        status,
+      });
+    }
   });
 
   if (options.onProgress) {

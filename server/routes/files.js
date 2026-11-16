@@ -7,6 +7,7 @@ const {
   getTmpFile,
   parseFileExtension,
 } = require("../util");
+const { getMediaTypeFromExtension } = require("../media-types");
 
 module.exports = ({ roleMiddleware, fileStorage }) => {
   const router = express.Router();
@@ -20,10 +21,9 @@ module.exports = ({ roleMiddleware, fileStorage }) => {
     req.pipe(req.busboy);
 
     req.busboy.once("file", (fieldname, file, info) => {
-      const filename = info.filename;
-      fileExtension = parseFileExtension(filename);
+      fileName = info.filename;
+      fileExtension = (parseFileExtension(info.filename) || "").toLowerCase();
       writeStream = fs.createWriteStream(tmpFile);
-      fileName = filename;
       file.pipe(writeStream);
     });
 
@@ -33,17 +33,37 @@ module.exports = ({ roleMiddleware, fileStorage }) => {
     });
 
     req.busboy.once("close", () => {
-      fileStorage
-        .store({ filePath: tmpFile, fileExtension, fileName })
-        .then((record) => {
-          res.json({
-            error: null,
-            data: {
-              item: record,
-            },
-          });
-        })
-        .catch(handleUnexpectedError(res));
+      if (writeStream === null) return;
+
+      if (getMediaTypeFromExtension(fileExtension) === null) {
+        fs.unlink(tmpFile, () => undefined);
+        res.status(422).json({
+          data: null,
+          error: `Unsupported file extension '${fileExtension}'.`,
+        });
+        return;
+      }
+
+      const proceed = () => {
+        fileStorage
+          .store({ filePath: tmpFile, fileExtension, fileName })
+          .then((record) => {
+            res.json({
+              error: null,
+              data: {
+                item: record,
+              },
+            });
+          })
+          .catch(handleUnexpectedError(res));
+      };
+
+      // busboy "close" can fire before the write stream has flushed to disk
+      if (writeStream.writableFinished) {
+        proceed();
+      } else {
+        writeStream.once("finish", proceed);
+      }
     });
   });
 
@@ -60,12 +80,22 @@ module.exports = ({ roleMiddleware, fileStorage }) => {
       .catch(handleUnexpectedError(res));
   });
 
-  router.patch("/images/:id", (req, res) => {
+  router.patch("/images/:id", roleMiddleware.dm, (req, res) => {
     const { id } = req.params;
 
     fileStorage
       .updateById(id, req.body)
       .then((record) => {
+        if (!record) {
+          res.status(404).json({
+            data: null,
+            error: {
+              message: `Image with id '${id}' does not exist.`,
+              code: "ERR_NOT_FOUND",
+            },
+          });
+          return;
+        }
         res.json({
           error: null,
           data: {
@@ -76,7 +106,7 @@ module.exports = ({ roleMiddleware, fileStorage }) => {
       .catch(handleUnexpectedError(res));
   });
 
-  router.delete("/images/:id", (req, res) => {
+  router.delete("/images/:id", roleMiddleware.dm, (req, res) => {
     const { id } = req.params;
 
     fileStorage
@@ -92,20 +122,23 @@ module.exports = ({ roleMiddleware, fileStorage }) => {
       .catch(handleUnexpectedError(res));
   });
 
-  router.get("/images", (req, res) => {
+  router.get("/images", roleMiddleware.dm, (req, res) => {
     let offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
-    if (Number.isNaN(offset)) {
+    if (Number.isNaN(offset) || offset < 0) {
       offset = 0;
     }
 
-    fileStorage.list(offset).then((list) => {
-      res.json({
-        error: null,
-        data: {
-          list,
-        },
-      });
-    });
+    fileStorage
+      .list(offset)
+      .then((list) => {
+        res.json({
+          error: null,
+          data: {
+            list,
+          },
+        });
+      })
+      .catch(handleUnexpectedError(res));
   });
 
   return { router };

@@ -34,9 +34,6 @@ if (exec.status !== 0) {
   }
 }
 
-const monacoVersion =
-  require("../node_modules/monaco-editor/package.json").version;
-
 let tsOut = "";
 for (const entry of Object.entries(version)) {
   tsOut += `export const ${entry[0]}: string = '${entry[1]}';\n`;
@@ -47,5 +44,3 @@ fse.outputFileSync(path.join("server", "version.ts"), tsOut);
 // Generate src/version.ts with just the app version for frontend
 const srcVersionTs = `export const APP_VERSION = "${version.appVersion}";\n`;
 fse.outputFileSync(path.join("src", "version.ts"), srcVersionTs);
-
-fse.outputFileSync(path.join(".env"), `VITE_MONACO_VERSION=${monacoVersion}`);

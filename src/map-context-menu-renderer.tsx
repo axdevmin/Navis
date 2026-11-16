@@ -1,7 +1,15 @@
 import * as React from "react";
+import { undoHistory } from "./undo-history";
 import graphql from "babel-plugin-relay/macro";
 import { useFragment, useMutation } from "relay-hooks";
 import { Box, Menu, MenuItem, MenuDivider, MenuList } from "@chakra-ui/react";
+import { loose } from "./chakra-loose";
+
+const BoxLoose = loose(Box);
+const MenuLoose = loose(Menu);
+const MenuItemLoose = loose(MenuItem);
+const MenuDividerLoose = loose(MenuDivider);
+const MenuListLoose = loose(MenuList);
 import { MapTokenEntity } from "./map-typings";
 import { useContextMenu } from "./map-context-menu";
 import {
@@ -9,7 +17,9 @@ import {
   usePropertiesPanel,
   useHiddenLabels,
 } from "./shared-token-state";
+import { defaultFactionForTokenType } from "./dm-area/combat/combat-faction";
 import { mapContextMenuRendererMapTokenRemoveManyMutation } from "./__generated__/mapContextMenuRendererMapTokenRemoveManyMutation.graphql";
+import { mapContextMenuRendererCombatAddParticipantMutation } from "./__generated__/mapContextMenuRendererCombatAddParticipantMutation.graphql";
 import { mapContextMenuRendererMapTokenAddManyMutation } from "./__generated__/mapContextMenuRendererMapTokenAddManyMutation.graphql";
 import { mapContextMenuRendererUpdateManyMutation } from "./__generated__/mapContextMenuRendererUpdateManyMutation.graphql";
 import { mapContextMenuRenderer_MapFragment$key } from "./__generated__/mapContextMenuRenderer_MapFragment.graphql";
@@ -38,6 +48,34 @@ const MapContextMenuRendererMapTokenAddManyMutation = graphql`
   }
 `;
 
+const MapContextMenuRendererCombatAddParticipantMutation = graphql`
+  mutation mapContextMenuRendererCombatAddParticipantMutation(
+    $input: CombatAddParticipantInput!
+  ) {
+    combatAddParticipant(input: $input) {
+      updatedMap {
+        id
+        combat {
+          isActive
+          round
+          currentParticipantId
+          participants {
+            id
+            name
+            faction
+            initiative
+            color
+            imageUrl
+            isVisibleForPlayers
+            isDown
+            tokenId
+          }
+        }
+      }
+    }
+  }
+`;
+
 const MapFragment = graphql`
   fragment mapContextMenuRenderer_MapFragment on Map {
     id
@@ -58,7 +96,13 @@ const MapFragment = graphql`
       tokenImage {
         id
       }
-      referenceId
+    }
+    combat {
+      isActive
+      participants {
+        id
+        tokenId
+      }
     }
   }
 `;
@@ -79,12 +123,7 @@ export const ContextMenuRenderer = (props: {
             tokenType: (token.tokenType as any) ?? "marker",
             isAlive: token.isAlive ?? true,
             imageUrl: token.imageUrl ?? null,
-            reference: token.referenceId
-              ? {
-                  id: token.referenceId,
-                  type: "note",
-                }
-              : null,
+            reference: null,
           });
         }
       }
@@ -110,6 +149,51 @@ export const ContextMenuRenderer = (props: {
     useMutation<mapContextMenuRendererUpdateManyMutation>(
       MapContextMenuRendererUpdateManyMutation
     );
+  const [combatAddParticipant] =
+    useMutation<mapContextMenuRendererCombatAddParticipantMutation>(
+      MapContextMenuRendererCombatAddParticipantMutation
+    );
+
+  /** Supprime des tokens en gardant de quoi les recréer (annulation). */
+  const deleteTokens = (tokenIds: Array<string>) => {
+    const removed = map.tokens.filter((token) => tokenIds.includes(token.id));
+    mapTokenDeleteMany({
+      variables: { input: { mapId: map.id, tokenIds } },
+    });
+    if (removed.length === 0) return;
+    undoHistory.push({
+      label:
+        removed.length === 1
+          ? "Suppression du token"
+          : `Suppression de ${removed.length} tokens`,
+      // Les tokens recréés ont de nouveaux identifiants : cette action ne
+      // peut donc pas être rétablie ensuite.
+      undo: () => {
+        mapTokenAddMany({
+          variables: {
+            input: {
+              mapId: map.id,
+              tokens: removed.map((token) => ({
+                x: token.x,
+                y: token.y,
+                color: token.color,
+                label: token.label,
+                radius: token.radius,
+                rotation: token.rotation,
+                isVisibleForPlayers: token.isVisibleForPlayers,
+                isMovableByPlayers: token.isMovableByPlayers,
+                isLocked: token.isLocked,
+                tokenType: token.tokenType as any,
+                isAlive: token.isAlive,
+                imageUrl: token.imageUrl ?? undefined,
+                tokenImageId: token.tokenImage?.id ?? undefined,
+              })),
+            },
+          },
+        });
+      },
+    });
+  };
 
   if (state === null) return null;
 
@@ -122,14 +206,14 @@ export const ContextMenuRenderer = (props: {
     onClick: () => void,
     children: React.ReactNode
   ) => (
-    <MenuItem
+    <MenuItemLoose
       bg="transparent"
       color={color}
       _hover={{ bg: hoverBg, color: "#ffffff" }}
       onClick={onClick}
     >
       {children}
-    </MenuItem>
+    </MenuItemLoose>
   );
 
   const duplicateToken = (tokenId: string, offsetX = 15, offsetY = 15) => {
@@ -154,6 +238,34 @@ export const ContextMenuRenderer = (props: {
               imageUrl: token.imageUrl ?? undefined,
             },
           ],
+        },
+      },
+    });
+  };
+
+  const combatTokenIds = new Set(
+    (map.combat?.participants ?? [])
+      .map((participant) => participant.tokenId)
+      .filter((tokenId): tokenId is string => tokenId != null)
+  );
+
+  const addTokenToCombat = (tokenId: string) => {
+    const token = map.tokens.find((t) => t.id === tokenId);
+    if (!token || combatTokenIds.has(token.id)) return;
+    combatAddParticipant({
+      variables: {
+        input: {
+          mapId: map.id,
+          participant: {
+            name: token.label || "Sans nom",
+            faction: defaultFactionForTokenType(
+              (token.tokenType as any) ?? "marker"
+            ),
+            color: token.color,
+            imageUrl: token.imageUrl ?? null,
+            tokenId: token.id,
+            isVisibleForPlayers: token.isVisibleForPlayers,
+          },
         },
       },
     });
@@ -184,114 +296,143 @@ export const ContextMenuRenderer = (props: {
   };
 
   return (
-    <Box
+    <BoxLoose
       position="absolute"
       left={state.clientPosition.x}
       top={state.clientPosition.y}
-      onContextMenu={(ev) => ev.preventDefault()}
+      onContextMenu={(ev: React.MouseEvent) => ev.preventDefault()}
     >
-      <Menu defaultIsOpen={true} onClose={() => showContextMenu(null)}>
-        <MenuList
-          bg="#1a1a2e"
-          borderColor="#333366"
+      <MenuLoose defaultIsOpen={true} onClose={() => showContextMenu(null)}>
+        <MenuListLoose
+          bg="#141416"
+          borderColor="rgba(255,255,255,0.1)"
           boxShadow="0 4px 20px rgba(0,0,0,0.6)"
           py="4px"
           minW="200px"
         >
-          {state.target?.type === "token" ? (() => {
-            const token = map.tokens.find((t) => t.id === state.target?.id);
-            const isVisible = token?.isVisibleForPlayers ?? false;
-            const isLabelHidden = hiddenLabelTokenIds.has(state.target.id);
-            const hasMultiSelection = selectedItems.size > 1 && selectedItems.has(state.target.id);
-            return (
-              <>
-                {mi(isVisible ? "#fbbf24" : "#86efac", "#2a2a4e", () => {
-                  updateManyTokens({
-                    variables: {
-                      input: {
-                        mapId: map.id,
-                        tokenIds: [state.target!.id],
-                        properties: { isVisibleForPlayers: !isVisible },
-                      },
+          {state.target?.type === "token" ? (
+            (() => {
+              const token = map.tokens.find((t) => t.id === state.target?.id);
+              const isVisible = token?.isVisibleForPlayers ?? false;
+              const isLabelHidden = hiddenLabelTokenIds.has(state.target.id);
+              const hasMultiSelection =
+                selectedItems.size > 1 && selectedItems.has(state.target.id);
+              return (
+                <>
+                  {mi(
+                    isVisible ? "#fbbf24" : "#86efac",
+                    "#1c1c1f",
+                    () => {
+                      updateManyTokens({
+                        variables: {
+                          input: {
+                            mapId: map.id,
+                            tokenIds: [state.target!.id],
+                            properties: { isVisibleForPlayers: !isVisible },
+                          },
+                        },
+                      });
                     },
-                  });
-                }, isVisible ? "👁 Masquer aux joueurs" : "👁 Afficher aux joueurs")}
-                {mi("#ddddff", "#2a2a4e",
-                  () => toggleLabelVisibility(state.target!.id),
-                  isLabelHidden ? "Afficher le texte" : "Masquer le texte"
-                )}
-                {mi("#ddddff", "#2a2a4e", togglePropertiesPanel,
-                  panelIsVisible ? "Masquer les propriétés" : "Afficher les propriétés"
-                )}
-                <MenuDivider borderColor="#333366" my="2px" />
-                {mi("#ddddff", "#2a2a4e",
-                  () => duplicateToken(state.target!.id),
-                  "Dupliquer"
-                )}
-                {hasMultiSelection && mi("#ddddff", "#2a2a4e", duplicateSelection,
-                  `Dupliquer la sélection (${selectedItems.size})`
-                )}
-                {hasMultiSelection && (
-                  <MenuItem
+                    isVisible ? "Masquer aux joueurs" : "Afficher aux joueurs"
+                  )}
+                  {mi(
+                    "#f2f2f2",
+                    "#1c1c1f",
+                    () => toggleLabelVisibility(state.target!.id),
+                    isLabelHidden ? "Afficher le texte" : "Masquer le texte"
+                  )}
+                  {mi(
+                    "#f2f2f2",
+                    "#1c1c1f",
+                    togglePropertiesPanel,
+                    panelIsVisible
+                      ? "Masquer les propriétés"
+                      : "Afficher les propriétés"
+                  )}
+                  {map.combat?.isActive &&
+                    token &&
+                    !combatTokenIds.has(token.id) &&
+                    mi(
+                      "#86efac",
+                      "#1a2e1a",
+                      () => addTokenToCombat(token.id),
+                      "Ajouter au combat"
+                    )}
+                  <MenuDividerLoose
+                    borderColor="rgba(255,255,255,0.1)"
+                    my="2px"
+                  />
+                  {mi(
+                    "#f2f2f2",
+                    "#1c1c1f",
+                    () => duplicateToken(state.target!.id),
+                    "Dupliquer"
+                  )}
+                  {hasMultiSelection &&
+                    mi(
+                      "#f2f2f2",
+                      "#1c1c1f",
+                      duplicateSelection,
+                      `Dupliquer la sélection (${selectedItems.size})`
+                    )}
+                  {hasMultiSelection && (
+                    <MenuItemLoose
+                      bg="transparent"
+                      color="#ff6b6b"
+                      _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
+                      onClick={() => {
+                        clearSelectedItems();
+                        deleteTokens(Array.from(selectedItems.keys()));
+                      }}
+                    >
+                      Supprimer la sélection ({selectedItems.size})
+                    </MenuItemLoose>
+                  )}
+                  <MenuItemLoose
                     bg="transparent"
                     color="#ff6b6b"
                     _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
                     onClick={() => {
-                      clearSelectedItems();
-                      mapTokenDeleteMany({
-                        variables: {
-                          input: { mapId: map.id, tokenIds: Array.from(selectedItems.keys()) },
-                        },
-                      });
+                      deleteTokens([state.target!.id]);
                     }}
                   >
-                    Supprimer la sélection ({selectedItems.size})
-                  </MenuItem>
-                )}
-                <MenuItem
-                  bg="transparent"
-                  color="#ff6b6b"
-                  _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
-                  onClick={() => {
-                    mapTokenDeleteMany({
-                      variables: {
-                        input: { mapId: map.id, tokenIds: [state.target!.id] },
-                      },
-                    });
-                  }}
-                >
-                  Supprimer
-                </MenuItem>
-              </>
-            );
-          })() : selectedItems.size > 0 ? (
+                    Supprimer
+                  </MenuItemLoose>
+                </>
+              );
+            })()
+          ) : selectedItems.size > 0 ? (
             <>
-              {mi("#ddddff", "#2a2a4e", togglePropertiesPanel,
-                panelIsVisible ? "Masquer les propriétés" : "Afficher les propriétés"
+              {mi(
+                "#f2f2f2",
+                "#1c1c1f",
+                togglePropertiesPanel,
+                panelIsVisible
+                  ? "Masquer les propriétés"
+                  : "Afficher les propriétés"
               )}
-              <MenuDivider borderColor="#333366" my="2px" />
-              {mi("#ddddff", "#2a2a4e", duplicateSelection,
+              <MenuDividerLoose borderColor="rgba(255,255,255,0.1)" my="2px" />
+              {mi(
+                "#f2f2f2",
+                "#1c1c1f",
+                duplicateSelection,
                 `Dupliquer la sélection (${selectedItems.size})`
               )}
-              <MenuItem
+              <MenuItemLoose
                 bg="transparent"
                 color="#ff6b6b"
                 _hover={{ bg: "#3a1a1a", color: "#ff9999" }}
                 onClick={() => {
                   clearSelectedItems();
-                  mapTokenDeleteMany({
-                    variables: {
-                      input: { mapId: map.id, tokenIds: Array.from(selectedItems.keys()) },
-                    },
-                  });
+                  deleteTokens(Array.from(selectedItems.keys()));
                 }}
               >
                 Supprimer la sélection ({selectedItems.size})
-              </MenuItem>
+              </MenuItemLoose>
             </>
           ) : null}
-        </MenuList>
-      </Menu>
-    </Box>
+        </MenuListLoose>
+      </MenuLoose>
+    </BoxLoose>
   );
 };

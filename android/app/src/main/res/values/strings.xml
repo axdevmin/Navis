@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Navis TV</string>
+
+    <string name="status_connecting">Connexion au serveur…</string>
+    <string name="status_unreachable">Serveur injoignable</string>
+    <string name="status_offline">Aucune connexion réseau</string>
+    <string name="status_retry_hint">Nouvelle tentative en cours…\n%1$s</string>
+    <string name="status_keys_hint">OK pour réessayer maintenant · MENU pour les réglages</string>
+    <string name="exit_confirm">Appuyez à nouveau sur RETOUR pour quitter</string>
+
+    <string name="setup_title">Réglages Navis TV</string>
+    <string name="setup_server_label">Adresse du serveur</string>
+    <string name="setup_server_hint">192.168.1.20:3000</string>
+    <string name="setup_server_help">Le http:// est ajouté automatiquement si vous l\'omettez.</string>
+    <string name="setup_password_label">Mot de passe joueur (facultatif)</string>
+    <string name="setup_password_hint">Laisser vide si le serveur n\'en demande pas</string>
+    <string name="setup_start_on_boot">Afficher le plateau au démarrage de l\'appareil</string>
+    <string name="setup_low_performance">Mode performances réduites (recommandé sur TV)</string>
+    <string name="setup_scale_label">Résolution de rendu</string>
+    <string name="setup_scale_option">%1$d %% de la résolution écran</string>
+    <string name="setup_scale_help">Le levier le plus efficace contre les ralentissements. Baissez-le si le plateau saccade.</string>
+    <string name="setup_preview_label">Page affichée</string>
+    <string name="setup_preview_empty">Renseignez l\'adresse du serveur</string>
+    <string name="setup_server_required">L\'adresse du serveur est obligatoire.</string>
+    <string name="setup_save">Enregistrer</string>
+    <string name="setup_cancel">Annuler</string>
+</resources>

@@ -12,6 +12,7 @@ import {
   tokenImageUpload_TokenImageCreateMutationResponse,
 } from "./__generated__/tokenImageUpload_TokenImageCreateMutation.graphql";
 import { TokenImageCropper } from "./token-image-cropper";
+import { useAccessToken } from "../hooks/use-access-token";
 
 const RequestTokenImageUploadMutation = graphql`
   mutation tokenImageUpload_RequestTokenImageUploadMutation(
@@ -90,6 +91,7 @@ export const useTokenImageUpload = () => {
   );
 
   const environment = useRelayEnvironment();
+  const accessToken = useAccessToken();
 
   const showCropper = (
     file: File,
@@ -130,6 +132,9 @@ export const useTokenImageUpload = () => {
         const res = await fetch(requestTokenImageUpload.uploadUrl, {
           method: "PUT",
           body: file,
+          headers: accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : undefined,
         });
         if (res.status !== 200) {
           const body = await res.text();

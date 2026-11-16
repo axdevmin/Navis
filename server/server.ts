@@ -89,9 +89,9 @@ export const bootstrapServer = async (env: ReturnType<typeof getEnv>) => {
     const authParam = req.query.authorization;
     let token = null;
 
-    if (authHeader) {
-      token = req.headers.authorization!.split(" ")[1];
-    } else if (authParam) {
+    if (typeof authHeader === "string") {
+      token = authHeader.split(" ")[1] ?? null;
+    } else if (typeof authParam === "string") {
       token = authParam;
     }
 
@@ -219,17 +219,30 @@ export const bootstrapServer = async (env: ReturnType<typeof getEnv>) => {
   app.use("/api", apiRouter);
 
   const indexHtml = path.join(env.PUBLIC_PATH, "index.html");
-  const indexHtmlContent = fs
-    .readFileSync(indexHtml, "utf-8")
-    .replace(/__PUBLIC_URL_PLACEHOLDER__/g, env.PUBLIC_URL)
-    .replace(/<base href="\/" \/>/, `<base href="${env.PUBLIC_URL}/" />`);
+  // Relu quand le fichier change : sinon, après un `npm run build`, un serveur
+  // déjà lancé continuait de servir l'ancien index.html, qui pointe vers des
+  // fichiers JS supprimés (page blanche ou « Échec du chargement »).
+  let indexHtmlCache: { mtimeMs: number; content: string } | null = null;
+  const getIndexHtmlContent = (): string => {
+    const { mtimeMs } = fs.statSync(indexHtml);
+    if (indexHtmlCache === null || indexHtmlCache.mtimeMs !== mtimeMs) {
+      indexHtmlCache = {
+        mtimeMs,
+        content: fs
+          .readFileSync(indexHtml, "utf-8")
+          .replace(/__PUBLIC_URL_PLACEHOLDER__/g, env.PUBLIC_URL)
+          .replace(/<base href="\/" \/>/, `<base href="${env.PUBLIC_URL}/" />`),
+      };
+    }
+    return indexHtmlCache.content;
+  };
 
   app.get("/", (_, res) => {
-    res.send(indexHtmlContent);
+    res.send(getIndexHtmlContent());
   });
 
   app.get("/mj", (_, res) => {
-    res.send(indexHtmlContent);
+    res.send(getIndexHtmlContent());
   });
 
   // Deprecated route for backwards compatibility
@@ -238,7 +251,7 @@ export const bootstrapServer = async (env: ReturnType<typeof getEnv>) => {
   });
 
   app.get("/mj", (_, res) => {
-    res.send(indexHtmlContent);
+    res.send(getIndexHtmlContent());
   });
 
   // Consider all URLs under /public/ as static files, and return them raw.

@@ -1,0 +1,106 @@
+import groovy.json.JsonSlurper
+
+plugins {
+    id "com.android.application"
+}
+
+// The APK version is derived from package.json so that the TV app and the web
+// app always ship the same version number.
+def pkg = new JsonSlurper().parse(file("../../package.json"))
+def semver = (pkg.version as String).split("\\.")
+def major = semver[0] as int
+def minor = semver[1] as int
+def patch = semver[2].replaceAll("[^0-9].*", "") as int
+
+// Server the APK points to out of the box. Override at build time with
+//   NAVIS_TV_SERVER_URL=http://192.168.1.20:3000 npm run build:android
+// The password is only baked in when NAVIS_TV_PASSWORD is provided, so nothing
+// secret is ever stored in the repository.
+def defaultServerUrl = project.findProperty("navisServerUrl")
+        ?: System.getenv("NAVIS_TV_SERVER_URL")
+        ?: "https://navis.availl.fr"
+def defaultPassword = project.findProperty("navisPassword")
+        ?: System.getenv("NAVIS_TV_PASSWORD")
+        ?: ""
+
+static String asJavaString(Object value) {
+    return "\"" + value.toString().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+}
+
+// Keystore for release signing. Never committed: see android/keystore.properties.sample
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystore = keystorePropertiesFile.exists()
+if (hasKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace "com.navis.tv"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.navis.tv"
+        // Android 5 and above: covers every Android TV box and projector.
+        minSdk 21
+        targetSdk 34
+        versionCode major * 10000 + minor * 100 + patch
+        versionName pkg.version as String
+
+        buildConfigField "String", "DEFAULT_SERVER_URL", asJavaString(defaultServerUrl)
+        buildConfigField "String", "DEFAULT_PASSWORD", asJavaString(defaultPassword)
+    }
+
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                storeFile file(keystoreProperties["storeFile"])
+                storePassword keystoreProperties["storePassword"]
+                keyAlias keystoreProperties["keyAlias"]
+                keyPassword keystoreProperties["keyPassword"]
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            } else {
+                // Without a keystore the APK is signed with the debug key so it
+                // stays installable for local sideloading. Do not distribute it.
+                logger.lifecycle(
+                    "[navis-tv] No android/keystore.properties: signing the release APK with the debug key."
+                )
+                signingConfig signingConfigs.debug
+            }
+        }
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            // pkg.version is used rather than variant.versionName, which already
+            // carries the build type suffix on debug builds.
+            output.outputFileName = "navis-tv-${pkg.version}-${variant.buildType.name}.apk"
+        }
+    }
+}
+
+// No third party dependency on purpose: the app is a single WebView activity,
+// so the framework widgets are enough and the APK stays around 1 MB.
+dependencies {
+}

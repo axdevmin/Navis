@@ -16,6 +16,8 @@ import { importFileModal_MapImageRequestUploadMutation } from "./__generated__/i
 import { importFileModal_MapCreateMutation } from "./__generated__/importFileModal_MapCreateMutation.graphql";
 import type { MediaType } from "../../server/media-types";
 import { getMediaTypeFromExtension } from "../../server/media-types";
+import { uploadFile } from "../upload-file";
+import { ProgressBar } from "../progress-bar";
 
 const OrSeperator = styled.span`
   padding-left: 18px;
@@ -32,6 +34,24 @@ const PreviewImage = styled.img`
   display: block;
   height: 50vh;
   width: auto;
+`;
+
+const PreviewVideo = styled.video`
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+  height: 50vh;
+  width: auto;
+`;
+
+const ErrorMessage = styled.div`
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: rgba(220, 38, 38, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  color: #b91c1c;
+  white-space: pre-wrap;
 `;
 
 const FileTitle = styled.div`
@@ -69,7 +89,6 @@ const validMapMediaFileTypes = [
   "video/ogg",
   "video/quicktime", // MOV files
 ];
-const validNoteImportFileTypes = ["application/zip", "text/markdown"];
 
 const ImportFileModal_MapImageRequestUploadMutation = graphql`
   mutation importFileModal_MapImageRequestUploadMutation(
@@ -106,7 +125,13 @@ const ImageImportModal: React.FC<{
   close: () => void;
 }> = ({ file, close }) => {
   const [objectUrl, setObjectUrl] = React.useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [uploadState, setUploadState] = React.useState<{
+    label: string;
+    fraction: number | null;
+  } | null>(null);
   const accessToken = useAccessToken();
+  const isVideoFile = file.type.startsWith("video/");
 
   // Auto-detect media type from extension
   const detectedMediaType = React.useMemo(() => {
@@ -149,78 +174,114 @@ const ImageImportModal: React.FC<{
 
   const [isCreatingMap, onClickCreateMap] = useAsyncTask(
     React.useCallback(async () => {
-      // Validate file size
-      if (file.size > maxFileSize) {
-        const sizeInMB = (maxFileSize / (1024 * 1024)).toFixed(0);
-        throw new Error(
-          `File size (${(file.size / (1024 * 1024)).toFixed(
-            1
-          )}MB) exceeds maximum allowed size of ${sizeInMB}MB for ${mediaType} format.`
-        );
-      }
-
-      const hash = await generateSHA256FileHash(file);
-      // 1. request file upload
-      const result = await mapImageRequestUpload({
-        variables: {
-          input: {
-            sha256: hash,
-            extension: file.name.split(".").pop() ?? "",
-            mediaType: mediaType as "image" | "gif" | "video",
-          },
-        },
-      });
-
-      // 2. upload file
-      const uploadResponse = await fetch(
-        result.mapImageRequestUpload.uploadUrl,
-        {
-          method: "PUT",
-          body: file,
+      setErrorMessage(null);
+      try {
+        // Validate file size
+        if (file.size > maxFileSize) {
+          const sizeInMB = (maxFileSize / (1024 * 1024)).toFixed(0);
+          throw new Error(
+            `Le fichier (${(file.size / (1024 * 1024)).toFixed(
+              1
+            )} Mo) dépasse la taille maximale de ${sizeInMB} Mo pour le format « ${mediaType} ».`
+          );
         }
-      );
 
-      if (uploadResponse.status !== 200) {
-        const body = await uploadResponse.text();
-        throw new Error(
-          "Received invalid response code: " +
-            uploadResponse.status +
-            "\n\n" +
-            body
-        );
-      }
-
-      // 3. create map
-      await mapCreate({
-        variables: {
-          input: {
-            title: file.name,
-            mapImageUploadId: result.mapImageRequestUpload.id,
+        setUploadState({ label: "Préparation du fichier…", fraction: null });
+        const hash = await generateSHA256FileHash(file);
+        // 1. request file upload
+        const result = await mapImageRequestUpload({
+          variables: {
+            input: {
+              sha256: hash,
+              extension: file.name.split(".").pop() ?? "",
+              mediaType: mediaType as "image" | "gif" | "video",
+            },
           },
-        },
-        onCompleted: () => {
-          close();
-        },
-      });
-    }, [file, fileTitleWithoutExtension, close])
+        });
+
+        // 2. upload file
+        setUploadState({ label: "Envoi du fichier…", fraction: 0 });
+        const uploadTask = uploadFile({
+          url: result.mapImageRequestUpload.uploadUrl,
+          body: file,
+          headers: {
+            Authorization: accessToken ? `Bearer ${accessToken}` : null,
+          },
+          onProgress: (progress) =>
+            setUploadState({
+              label: "Envoi du fichier…",
+              fraction: progress.fraction,
+            }),
+        });
+        const uploadResult = await uploadTask.done;
+
+        if (uploadResult.type === "abort") {
+          return;
+        }
+        if (uploadResult.type === "error") {
+          throw new Error(
+            `L'envoi du fichier a échoué (code ${uploadResult.status}).` +
+              (uploadResult.responseText
+                ? `\n\n${uploadResult.responseText}`
+                : "")
+          );
+        }
+
+        // 3. create map
+        setUploadState({ label: "Création de la carte…", fraction: null });
+        const createResult = await mapCreate({
+          variables: {
+            input: {
+              title: file.name,
+              mapImageUploadId: result.mapImageRequestUpload.id,
+            },
+          },
+        });
+        if (createResult.mapCreate.__typename === "MapCreateError") {
+          throw new Error(
+            `La création de la carte a échoué : ${createResult.mapCreate.reason}`
+          );
+        }
+        close();
+      } catch (err) {
+        setErrorMessage(
+          err instanceof Error ? err.message : "Une erreur est survenue."
+        );
+      } finally {
+        setUploadState(null);
+      }
+    }, [file, mediaType, maxFileSize, accessToken, close])
   );
 
   const [isImportingMediaLibraryItem, onClickImportMediaLibraryItem] =
     useAsyncTask(
       React.useCallback(async () => {
+        setErrorMessage(null);
+        setUploadState({ label: "Envoi du fichier…", fraction: 0 });
         const formData = new FormData();
         formData.append("file", file);
 
-        const task = sendRequest({
+        const task = uploadFile({
           url: buildApiUrl("/images"),
           method: "POST",
           body: formData,
           headers: {
             Authorization: accessToken ? `Bearer ${accessToken}` : null,
           },
+          onProgress: (progress) =>
+            setUploadState({
+              label: "Envoi du fichier…",
+              fraction: progress.fraction,
+            }),
         });
 
-        await task.done;
+        const result = await task.done;
+        setUploadState(null);
+        if (result.type === "abort") return;
+        if (result.type !== "success") {
+          setErrorMessage("L'import dans la médiathèque a échoué.");
+          return;
+        }
         close();
       }, [file, close, accessToken])
     );
@@ -238,16 +299,30 @@ const ImageImportModal: React.FC<{
         </Modal.Header>
         <Modal.Body>
           {areButtonsDisabled ? (
-            <div style={{ textAlign: "center", padding: "8px 0" }}>
-              <LoadingSpinner state="inProgress" />
-              <p style={{ marginTop: 8, color: "#555" }}>
-                Importation en cours...
-              </p>
+            <div style={{ padding: "8px 0" }}>
+              <div style={{ textAlign: "center" }}>
+                <LoadingSpinner state="inProgress" />
+              </div>
+              <div style={{ marginTop: 16 }}>
+                <ProgressBar
+                  value={uploadState?.fraction ?? null}
+                  label={uploadState?.label ?? "Importation en cours…"}
+                />
+              </div>
             </div>
           ) : (
             <>
-              {objectUrl ? <PreviewImage src={objectUrl} /> : null}
+              {objectUrl ? (
+                isVideoFile ? (
+                  <PreviewVideo src={objectUrl} controls muted loop autoPlay />
+                ) : (
+                  <PreviewImage src={objectUrl} />
+                )
+              ) : null}
               <FileTitle>{fileTitleWithoutExtension}</FileTitle>
+              {errorMessage ? (
+                <ErrorMessage role="alert">{errorMessage}</ErrorMessage>
+              ) : null}
               <MediaTypeSelector>
                 <label>
                   <strong>Type de média :</strong>
@@ -297,283 +372,12 @@ const ImageImportModal: React.FC<{
   );
 };
 
-type ImportFileLogRecord = { type: "error" | "success"; message: string };
-
-const NoteImportLogRow = styled.div`
-  text-align: left;
-  padding: 4px;
-  background-color: black;
-  color: white;
-`;
-
-const NoteImportLogFilter = styled.div`
-  text-align: right;
-  padding-top: 8px;
-`;
-
-const NoteImportLogRenderer = (props: {
-  logs: ImportFileLogRecord[];
-}): React.ReactElement => {
-  const virtuosoRef = React.useRef<VirtuosoHandle | null>(null);
-
-  const [filter, setFilter] = React.useState(
-    "failure" as "none" | "success" | "failure"
-  );
-
-  const logs = React.useMemo(() => {
-    switch (filter) {
-      case "none":
-        return props.logs;
-      case "success":
-        return props.logs.filter((log) => log.type === "success");
-      case "failure":
-        return props.logs.filter((log) => log.type === "error");
-    }
-  }, [props.logs, filter]);
-
-  // TODO: Is there a better way to start the list at the end?
-  React.useEffect(() => {
-    setTimeout(() => virtuosoRef.current?.scrollToIndex(logs.length - 1));
-  }, [logs]);
-
-  return (
-    <React.Fragment>
-      <Virtuoso
-        ref={virtuosoRef}
-        initialTopMostItemIndex={props.logs.length - 1}
-        followOutput={true}
-        data={props.logs}
-        itemContent={(_, logRow) => {
-          return <NoteImportLogRow>{logRow.message}</NoteImportLogRow>;
-        }}
-      />
-      <NoteImportLogFilter>
-        <label>
-          <strong>Filter </strong>
-          <select
-            value={filter}
-            onChange={(ev) => {
-              setFilter(ev.target.value as any);
-            }}
-          >
-            <option value="none">All</option>
-            <option value="success">Successful</option>
-            <option value="failure">Failed</option>
-          </select>
-        </label>
-      </NoteImportLogFilter>
-    </React.Fragment>
-  );
-};
-
-const NoteImportModal: React.FC<{ file: File; close: () => void }> = (
-  props
-) => {
-  const [state, setState] = React.useState<
-    "notStarted" | "inProgress" | "finished"
-  >("notStarted");
-  const [logs, setLogs] = React.useState([] as ImportFileLogRecord[]);
-  const [importedFilesCount, setImportedFilesCount] = React.useState(0);
-  const [failedFilesCount, setFailedFilesCount] = React.useState(0);
-  const [showLogs, setShowLogs] = React.useState(false);
-
-  const accessToken = useAccessToken();
-  const onClose = () => {
-    if (state === "inProgress") {
-      return;
-    }
-    props.close();
-  };
-
-  const request = React.useRef<ISendRequestTask | null>(null);
-
-  React.useEffect(
-    () => () => {
-      request.current?.abort();
-    },
-    []
-  );
-
-  const onClickImport = () => {
-    if (state === "inProgress") {
-      return;
-    }
-    setState("inProgress");
-    const data = new FormData();
-    data.append("file", props.file);
-    request.current = sendRequest({
-      method: "POST",
-      url: buildApiUrl("/notes/import"),
-      body: data,
-      headers: {
-        Authorization: accessToken ? `Bearer ${accessToken}` : null,
-      },
-      onProgress: (data: string) => {
-        const lines = data.split("\n").filter(Boolean);
-        lines.forEach((line) => {
-          const data = JSON.parse(line);
-          if (data.latest.error) {
-            setLogs((logs) => [
-              ...logs,
-              {
-                type: "error",
-                message: data.latest.error.message,
-              },
-            ]);
-          } else {
-            setLogs((logs) => [
-              ...logs,
-              {
-                type: "success",
-                message: data.latest.data.message,
-              },
-            ]);
-          }
-        });
-        const lastLine = lines.pop();
-        if (lastLine?.trim()) {
-          const data = JSON.parse(lastLine.trim());
-          if (data.amountOfImportedRecords) {
-            setImportedFilesCount(data.amountOfImportedRecords);
-          }
-          if (data.amountOfFailedRecords) {
-            setFailedFilesCount(data.amountOfFailedRecords);
-          }
-        }
-      },
-    });
-    request.current.done.then(() => {
-      setState("finished");
-    });
-  };
-
-  return (
-    <Modal onPressEscape={onClose} onClickOutside={onClose}>
-      <Modal.Dialog>
-        <Modal.Header>
-          <h3>Import Notes</h3>
-        </Modal.Header>
-        <Modal.Body>
-          <div style={{ textAlign: "center" }}>
-            {state === "notStarted" ? (
-              <h2>Preparing import</h2>
-            ) : (
-              <h2>
-                Successfully imported {importedFilesCount} note
-                {importedFilesCount === 1 ? "" : "s"}{" "}
-                {failedFilesCount > 0 ? ` (${failedFilesCount} failed)` : null}
-              </h2>
-            )}
-            {showLogs ? (
-              <React.Fragment>
-                <NoteImportLogRenderer logs={logs} />
-              </React.Fragment>
-            ) : (
-              <React.Fragment>
-                <FileTitle>File: {props.file.name}</FileTitle>
-                <div
-                  style={{
-                    height: 200,
-                    position: "relative",
-                    marginTop: 12,
-                  }}
-                >
-                  <LoadingSpinner state={state} />
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    {state === "notStarted" ? null : importedFilesCount === 0 &&
-                      state === "inProgress" ? (
-                      <strong>
-                        Uploading
-                        <AnimatedDotDotDot />
-                      </strong>
-                    ) : state === "finished" ? (
-                      <strong>Done.</strong>
-                    ) : (
-                      <strong>
-                        Importing
-                        <AnimatedDotDotDot />
-                      </strong>
-                    )}
-                  </div>
-                </div>
-              </React.Fragment>
-            )}
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Modal.Actions>
-            {state === "notStarted" ? (
-              <>
-                <Modal.ActionGroup>
-                  <Button.Tertiary tabIndex={1} onClick={onClose}>
-                    Close
-                  </Button.Tertiary>
-                </Modal.ActionGroup>
-                <Modal.ActionGroup>
-                  <div>
-                    <Button.Primary onClick={onClickImport}>
-                      Start Import
-                    </Button.Primary>
-                  </div>
-                </Modal.ActionGroup>
-              </>
-            ) : state === "inProgress" ? (
-              <>
-                <Modal.ActionGroup>
-                  <div>
-                    <Button.Primary disabled>
-                      {importedFilesCount === 0 ? "Uploading" : "Importing"}
-                      <AnimatedDotDotDot />
-                    </Button.Primary>
-                  </div>
-                </Modal.ActionGroup>
-              </>
-            ) : (
-              <>
-                <Modal.ActionGroup>
-                  <div>
-                    {showLogs ? (
-                      <Button.Primary onClick={() => setShowLogs(false)}>
-                        Hide logs
-                      </Button.Primary>
-                    ) : (
-                      <Button.Primary onClick={() => setShowLogs(true)}>
-                        Show logs
-                      </Button.Primary>
-                    )}
-                  </div>
-                  <div>
-                    <Button.Primary onClick={onClose}>Close</Button.Primary>
-                  </div>
-                </Modal.ActionGroup>
-              </>
-            )}
-          </Modal.Actions>
-        </Modal.Footer>
-      </Modal.Dialog>
-    </Modal>
-  );
-};
-
 export const ImportFileModal: React.FC<{
   file: File;
   close: () => void;
 }> = ({ file, close }) => {
   if (validMapMediaFileTypes.includes(file.type)) {
     return <ImageImportModal file={file} close={close} />;
-  } else if (validNoteImportFileTypes.includes(file.type)) {
-    return <NoteImportModal file={file} close={close} />;
   } else {
     return (
       <Modal onPressEscape={close} onClickOutside={close}>
@@ -582,8 +386,7 @@ export const ImportFileModal: React.FC<{
             <h3>Fichier invalide</h3>
           </Modal.Header>
           <Modal.Body>
-            Seuls les images, GIFs, vidéos, fichiers zip et fichiers markdown
-            peuvent être importés dans Navis.
+            Seuls les images, GIFs et vidéos peuvent être importés dans Navis.
           </Modal.Body>
           <Modal.Footer>
             <Modal.Actions>

@@ -9,6 +9,13 @@ export type ConfigureMapToolState = {
   offsetX: number;
   columnWidth: number;
   columnHeight: number;
+  /**
+   * Réglage en deux clics : premier coin déjà cliqué (coordonnées image),
+   * en attente du coin opposé.
+   */
+  firstCorner: [number, number] | null;
+  /** Nombre de cases comprises entre les deux clics (1 = une seule case). */
+  cellSpan: number;
 };
 
 type ConfigureGridMapToolContextValue = {
@@ -25,8 +32,40 @@ export const ConfigureGridMapTool: MapTool = {
     const configureGridContext = React.useContext(ConfigureGridMapToolContext);
     usePinchWheelZoom(props.mapContext);
     props.useMapGesture({
-      onDrag: ({ delta, movement, memo, event }) => {
+      onDrag: ({ delta, movement, memo, event, tap }) => {
         event.stopPropagation();
+
+        if (tap === true && event.button === 0) {
+          // Deux clics sur deux coins opposés d'une case (ou d'un bloc de
+          // cases) suffisent à déduire la taille et le décalage de la grille.
+          // @ts-ignore le typage de l'événement n'expose pas `point`
+          const point: THREE.Vector3 = event.point;
+          const corner = props.mapContext.helper.threePointToImageCoordinates([
+            point.x,
+            point.y,
+          ]);
+          configureGridContext.setState((state) => {
+            if (state.firstCorner === null) {
+              return { ...state, firstCorner: corner };
+            }
+            const span = Math.max(1, state.cellSpan);
+            const width = Math.abs(corner[0] - state.firstCorner[0]) / span;
+            const height = Math.abs(corner[1] - state.firstCorner[1]) / span;
+            if (width < 2 || height < 2) {
+              // deux clics au même endroit : on recommence
+              return { ...state, firstCorner: null };
+            }
+            return {
+              ...state,
+              firstCorner: null,
+              columnWidth: Math.round(width * 100) / 100,
+              columnHeight: Math.round(height * 100) / 100,
+              offsetX: Math.min(corner[0], state.firstCorner[0]),
+              offsetY: Math.min(corner[1], state.firstCorner[1]),
+            };
+          });
+          return;
+        }
 
         if (props.mapContext.isAltPressed) {
           configureGridContext.setState((state) => ({
@@ -65,8 +104,23 @@ export const ConfigureGridMapTool: MapTool = {
         ])
       );
 
+    const firstCorner = configureGridContext.state.firstCorner;
+    const firstCornerPosition = firstCorner
+      ? props.mapContext.helper.coordinates.canvasToThree(
+          props.mapContext.helper.coordinates.imageToCanvas(firstCorner)
+        )
+      : null;
+    const markerSize = Math.max(columnWidth * 0.12, 0.02);
+
     return (
       <>
+        {firstCornerPosition ? (
+          // repère du premier coin cliqué
+          <mesh position={[firstCornerPosition[0], firstCornerPosition[1], 0]}>
+            <circleBufferGeometry attach="geometry" args={[markerSize, 24]} />
+            <meshBasicMaterial attach="material" color="#e3b565" />
+          </mesh>
+        ) : null}
         <CompleteGrid
           position={[offsetX + columnWidth, offsetY - columnHeight, 0]}
           columnWidth={columnWidth}

@@ -6,6 +6,9 @@ import {
   LevaInputProps,
 } from "leva/plugin";
 import { HStack } from "@chakra-ui/layout";
+import { loose } from "../chakra-loose";
+
+const HStackLoose = loose(HStack);
 import styled from "@emotion/styled/macro";
 
 const { Row, Label } = LevaComponents;
@@ -35,7 +38,7 @@ const IconPicker = () => {
   return (
     <Row input>
       <Label>{label}</Label>
-      <HStack>
+      <HStackLoose>
         {options.map((option) => (
           <ShapeButton
             key={option.value}
@@ -46,7 +49,7 @@ const IconPicker = () => {
             <span>{option.label}</span>
           </ShapeButton>
         ))}
-      </HStack>
+      </HStackLoose>
     </Row>
   );
 };

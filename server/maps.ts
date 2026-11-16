@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs-extra";
 import junk from "junk";
 import { randomUUID } from "crypto";
-import { MediaType } from "./media-types";
+import { MediaType, getMediaTypeFromExtension } from "./media-types";
 
 const isDirectory = (source: string) => fs.lstatSync(source).isDirectory();
 
@@ -13,7 +13,7 @@ const prepareToken = (token: { [key: string]: unknown }) => {
   if (typeof token.title !== "string") {
     token.title = "";
   }
-  if (typeof token.title !== "string") {
+  if (typeof token.description !== "string") {
     token.description = "";
   }
   if (token.isLocked === undefined) {
@@ -136,10 +136,120 @@ export type WeatherSettings = {
   windAngle: number;
 };
 
+/**
+ * Pièce (ou zone) tracée par le MJ sur la carte : un polygone qu'il peut
+ * révéler d'un clic et qui peut être abritée de la météo.
+ */
+export type MapRoom = {
+  id: string;
+  name: string;
+  /** Sommets du polygone, à plat : [x1, y1, x2, y2, …] en pixels de l'image. */
+  points: Array<number>;
+  /** false : la météo ne s'affiche pas dans cette pièce (intérieur). */
+  hasWeather: boolean;
+};
+
+const prepareRooms = (rawRooms: unknown): Array<MapRoom> =>
+  Array.isArray(rawRooms)
+    ? rawRooms.filter(
+        (room): room is MapRoom =>
+          typeof room === "object" &&
+          room !== null &&
+          typeof room.id === "string" &&
+          Array.isArray(room.points) &&
+          room.points.length >= 6
+      )
+    : [];
+
 export const DEFAULT_WEATHER: WeatherSettings = {
   type: "none",
   intensity: 0.5,
   windAngle: 0,
+};
+
+export type CombatFaction = "hero" | "enemy" | "neutral";
+
+export type CombatParticipantEntity = {
+  id: string;
+  name: string;
+  faction: CombatFaction;
+  initiative: number;
+  color: string;
+  imageUrl: string | null;
+  tokenId: string | null;
+  isVisibleForPlayers: boolean;
+  isDown: boolean;
+};
+
+export type CombatState = {
+  isActive: boolean;
+  round: number;
+  currentParticipantId: string | null;
+  participants: Array<CombatParticipantEntity>;
+};
+
+export const DEFAULT_COMBAT: CombatState = {
+  isActive: false,
+  round: 1,
+  currentParticipantId: null,
+  participants: [],
+};
+
+const prepareCombat = (
+  combat: null | undefined | { [key: string]: unknown }
+): CombatState => {
+  if (!combat || typeof combat !== "object") {
+    return { ...DEFAULT_COMBAT, participants: [] };
+  }
+  const participants = Array.isArray(combat.participants)
+    ? (combat.participants as Array<{ [key: string]: unknown }>).map(
+        (participant): CombatParticipantEntity => ({
+          id:
+            typeof participant.id === "string" ? participant.id : randomUUID(),
+          name: typeof participant.name === "string" ? participant.name : "",
+          faction:
+            participant.faction === "hero" ||
+            participant.faction === "enemy" ||
+            participant.faction === "neutral"
+              ? participant.faction
+              : "neutral",
+          initiative:
+            typeof participant.initiative === "number"
+              ? participant.initiative
+              : 0,
+          color:
+            typeof participant.color === "string"
+              ? participant.color
+              : "#888888",
+          imageUrl:
+            typeof participant.imageUrl === "string"
+              ? participant.imageUrl
+              : null,
+          tokenId:
+            typeof participant.tokenId === "string"
+              ? participant.tokenId
+              : null,
+          isVisibleForPlayers:
+            typeof participant.isVisibleForPlayers === "boolean"
+              ? participant.isVisibleForPlayers
+              : true,
+          isDown:
+            typeof participant.isDown === "boolean"
+              ? participant.isDown
+              : false,
+        })
+      )
+    : [];
+
+  return {
+    isActive: typeof combat.isActive === "boolean" ? combat.isActive : false,
+    round: typeof combat.round === "number" ? combat.round : 1,
+    currentParticipantId:
+      typeof combat.currentParticipantId === "string"
+        ? combat.currentParticipantId
+        : null,
+    participants,
+  };
 };
 
 export type MapEntity = {
@@ -157,6 +267,8 @@ export type MapEntity = {
   fogProgressRevision: string;
   mediaType: MediaType;
   weatherSettings: WeatherSettings;
+  combat: CombatState;
+  rooms: Array<MapRoom>;
 };
 
 export class Maps {
@@ -194,12 +306,25 @@ export class Maps {
       .map((id) => this._buildMapFolderPath(id))
       .filter(isDirectory);
 
-    return mapDirectories.map((directory) => {
-      const rawConfig = fs.readFileSync(
-        path.join(directory, "settings.json"),
-        "utf-8"
-      );
-      const rawMap = JSON.parse(rawConfig) as LegacyMapEntity | MapEntity;
+    const maps: Array<MapEntity> = [];
+
+    for (const directory of mapDirectories) {
+      let rawMap: LegacyMapEntity | MapEntity;
+      try {
+        const rawConfig = fs.readFileSync(
+          path.join(directory, "settings.json"),
+          "utf-8"
+        );
+        rawMap = JSON.parse(rawConfig) as LegacyMapEntity | MapEntity;
+      } catch (err) {
+        // A single corrupt or incomplete map folder must not prevent the
+        // server from starting.
+        console.error(
+          `[maps] Skipping invalid map folder '${directory}':`,
+          err
+        );
+        continue;
+      }
       const map: MapEntity = {
         id: rawMap.id,
         title: rawMap.title,
@@ -220,9 +345,7 @@ export class Maps {
             ? rawMap.fogProgressRevision
             : randomUUID(),
         fogLiveRevision:
-          "fogLiveRevision" in rawMap
-            ? rawMap.fogProgressRevision
-            : randomUUID(),
+          "fogLiveRevision" in rawMap ? rawMap.fogLiveRevision : randomUUID(),
         mediaType:
           "mediaType" in rawMap && rawMap.mediaType
             ? rawMap.mediaType
@@ -231,10 +354,18 @@ export class Maps {
           "weatherSettings" in rawMap && rawMap.weatherSettings
             ? (rawMap.weatherSettings as WeatherSettings)
             : { ...DEFAULT_WEATHER },
+        rooms: prepareRooms("rooms" in rawMap ? rawMap.rooms : null),
+        combat: prepareCombat(
+          "combat" in rawMap
+            ? (rawMap.combat as { [key: string]: unknown })
+            : null
+        ),
       };
 
-      return map;
-    });
+      maps.push(map);
+    }
+
+    return maps;
   }
 
   getBasePath(map: { id: string }) {
@@ -262,7 +393,7 @@ export class Maps {
   }) {
     const id = randomUUID();
     return this._processTask<MapEntity>(`map:${id}`, async () => {
-      fs.mkdirp(this._buildMapFolderPath(id));
+      await fs.mkdirp(this._buildMapFolderPath(id));
       const mapPath = `map${fileExtension ? `.${fileExtension}` : ``}`;
       const map: MapEntity = {
         id,
@@ -281,6 +412,8 @@ export class Maps {
         fogLiveRevision: randomUUID(),
         mediaType,
         weatherSettings: { ...DEFAULT_WEATHER },
+        combat: { ...DEFAULT_COMBAT, participants: [] },
+        rooms: [],
       };
 
       await fs.move(filePath, path.join(this._buildMapFolderPath(id), mapPath));
@@ -320,6 +453,8 @@ export class Maps {
         fogLiveRevision: randomUUID(),
         mediaType: "video-url",
         weatherSettings: { ...DEFAULT_WEATHER },
+        combat: { ...DEFAULT_COMBAT, participants: [] },
+        rooms: [],
       };
 
       await fs.writeFile(
@@ -433,15 +568,27 @@ export class Maps {
       if (!map) {
         throw new Error(`Map with id "${id}" not found.`);
       }
-      if (map.mapPath) {
-        await fs.remove(map.mapPath);
+      // The old media file lives inside the map folder ("mapPath" is
+      // relative to it). For "video-url" maps "mapPath" is an external URL:
+      // there is nothing to delete on disk.
+      if (map.mapPath && map.mediaType !== "video-url") {
+        await fs.remove(
+          path.join(this._buildMapFolderPath(map.id), map.mapPath)
+        );
       }
 
       const fileName = `map${fileExtension ? `.${fileExtension}` : ``}`;
       const destination = path.join(this._buildMapFolderPath(map.id), fileName);
-      await fs.move(filePath, destination);
+      await fs.move(filePath, destination, { overwrite: true });
 
-      const result = await this._updateMapSettings(map, { mapPath: fileName });
+      const mediaType = fileExtension
+        ? getMediaTypeFromExtension(fileExtension) ?? "image"
+        : "image";
+
+      const result = await this._updateMapSettings(map, {
+        mapPath: fileName,
+        mediaType,
+      });
       return result;
     });
   }
@@ -629,8 +776,34 @@ export class Maps {
           token.imageUrl = imageUrl;
         }
 
+        // Keep the linked combat participant in sync: visibility and
+        // alive/down state are mirrored between a token and its participant.
+        let combat = map.combat;
+        if (
+          (isVisibleForPlayers !== undefined || isAlive !== undefined) &&
+          combat?.participants?.some(
+            (participant) => participant.tokenId === tokenId
+          )
+        ) {
+          combat = {
+            ...combat,
+            participants: combat.participants.map((participant) =>
+              participant.tokenId === tokenId
+                ? {
+                    ...participant,
+                    ...(isVisibleForPlayers !== undefined
+                      ? { isVisibleForPlayers }
+                      : {}),
+                    ...(isAlive !== undefined ? { isDown: !isAlive } : {}),
+                  }
+                : participant
+            ),
+          };
+        }
+
         const updatedMap = await this._updateMapSettings(map, {
           tokens: map.tokens,
+          combat,
         });
 
         return {
@@ -700,8 +873,37 @@ export class Maps {
         }
       }
 
+      // Keep the linked combat participants in sync: visibility and
+      // alive/down state are mirrored between tokens and participants.
+      let combat = map.combat;
+      if (
+        (props.isVisibleForPlayers != null || props.isAlive !== undefined) &&
+        combat?.participants?.some(
+          (participant) =>
+            participant.tokenId !== null && tokenIds.has(participant.tokenId)
+        )
+      ) {
+        combat = {
+          ...combat,
+          participants: combat.participants.map((participant) =>
+            participant.tokenId !== null && tokenIds.has(participant.tokenId)
+              ? {
+                  ...participant,
+                  ...(props.isVisibleForPlayers != null
+                    ? { isVisibleForPlayers: props.isVisibleForPlayers }
+                    : {}),
+                  ...(props.isAlive !== undefined
+                    ? { isDown: !props.isAlive }
+                    : {}),
+                }
+              : participant
+          ),
+        };
+      }
+
       await this._updateMapSettings(map, {
         tokens: map.tokens,
+        combat,
       });
     });
   }
@@ -717,6 +919,308 @@ export class Maps {
       );
       await this._updateMapSettings(map, { tokens });
       return tokenIds;
+    });
+  }
+
+  async combatStart(
+    mapId: string,
+    participants: Array<{
+      name: string;
+      faction: CombatFaction;
+      initiative: number;
+      color: string;
+      imageUrl: string | null;
+      tokenId: string | null;
+      isVisibleForPlayers: boolean;
+    }>
+  ) {
+    return await this._processTask<MapEntity>(`map:${mapId}`, async () => {
+      const map = this.get(mapId);
+      if (!map) {
+        throw new Error(`Map with id "${mapId}" not found.`);
+      }
+
+      const newParticipants: Array<CombatParticipantEntity> = participants.map(
+        (participant) => ({
+          id: randomUUID(),
+          name: participant.name,
+          faction: participant.faction,
+          initiative: participant.initiative,
+          color: participant.color,
+          imageUrl: participant.imageUrl,
+          tokenId: participant.tokenId,
+          isVisibleForPlayers: participant.isVisibleForPlayers,
+          isDown: false,
+        })
+      );
+
+      const combat: CombatState = {
+        isActive: true,
+        round: 1,
+        currentParticipantId: newParticipants[0]?.id ?? null,
+        participants: newParticipants,
+      };
+
+      return await this._updateMapSettings(map, { combat });
+    });
+  }
+
+  async combatAddParticipant(
+    mapId: string,
+    participant: {
+      name: string;
+      faction: CombatFaction;
+      initiative: number;
+      color: string;
+      imageUrl: string | null;
+      tokenId: string | null;
+      isVisibleForPlayers: boolean;
+    }
+  ) {
+    return await this._processTask<MapEntity>(`map:${mapId}`, async () => {
+      const map = this.get(mapId);
+      if (!map) {
+        throw new Error(`Map with id "${mapId}" not found.`);
+      }
+
+      const newParticipant: CombatParticipantEntity = {
+        id: randomUUID(),
+        name: participant.name,
+        faction: participant.faction,
+        initiative: participant.initiative,
+        color: participant.color,
+        imageUrl: participant.imageUrl,
+        tokenId: participant.tokenId,
+        isVisibleForPlayers: participant.isVisibleForPlayers,
+        isDown: false,
+      };
+
+      const participants = [...map.combat.participants];
+      const insertIndex = participants.findIndex(
+        (existing) => existing.initiative < newParticipant.initiative
+      );
+      if (insertIndex === -1) {
+        participants.push(newParticipant);
+      } else {
+        participants.splice(insertIndex, 0, newParticipant);
+      }
+
+      const combat: CombatState = {
+        ...map.combat,
+        currentParticipantId:
+          map.combat.currentParticipantId ?? newParticipant.id,
+        participants,
+      };
+
+      return await this._updateMapSettings(map, { combat });
+    });
+  }
+
+  async combatRemoveParticipant(mapId: string, participantId: string) {
+    return await this._processTask<MapEntity>(`map:${mapId}`, async () => {
+      const map = this.get(mapId);
+      if (!map) {
+        throw new Error(`Map with id "${mapId}" not found.`);
+      }
+
+      const removedIndex = map.combat.participants.findIndex(
+        (participant) => participant.id === participantId
+      );
+      if (removedIndex === -1) {
+        return map;
+      }
+
+      const participants = map.combat.participants.filter(
+        (participant) => participant.id !== participantId
+      );
+
+      let currentParticipantId = map.combat.currentParticipantId;
+      if (currentParticipantId === participantId) {
+        currentParticipantId =
+          participants[removedIndex % participants.length]?.id ?? null;
+      }
+
+      const combat: CombatState = {
+        ...map.combat,
+        currentParticipantId,
+        participants,
+      };
+
+      return await this._updateMapSettings(map, { combat });
+    });
+  }
+
+  async combatReorderParticipants(mapId: string, orderedIds: Array<string>) {
+    return await this._processTask<MapEntity>(`map:${mapId}`, async () => {
+      const map = this.get(mapId);
+      if (!map) {
+        throw new Error(`Map with id "${mapId}" not found.`);
+      }
+
+      const byId = new Map(
+        map.combat.participants.map((participant) => [
+          participant.id,
+          participant,
+        ])
+      );
+      const reordered = orderedIds
+        .map((id) => byId.get(id))
+        .filter((participant): participant is CombatParticipantEntity =>
+          Boolean(participant)
+        );
+
+      const combat: CombatState = {
+        ...map.combat,
+        participants: reordered,
+      };
+
+      return await this._updateMapSettings(map, { combat });
+    });
+  }
+
+  async combatNextTurn(mapId: string) {
+    return await this._processTask<MapEntity>(`map:${mapId}`, async () => {
+      const map = this.get(mapId);
+      if (!map) {
+        throw new Error(`Map with id "${mapId}" not found.`);
+      }
+      const { participants } = map.combat;
+      if (participants.length === 0) {
+        return map;
+      }
+
+      const currentIndex = participants.findIndex(
+        (participant) => participant.id === map.combat.currentParticipantId
+      );
+      const nextIndex =
+        currentIndex === -1 ? 0 : (currentIndex + 1) % participants.length;
+      const wrapsToStart = currentIndex !== -1 && nextIndex === 0;
+
+      const combat: CombatState = {
+        ...map.combat,
+        round: wrapsToStart ? map.combat.round + 1 : map.combat.round,
+        currentParticipantId: participants[nextIndex].id,
+      };
+
+      return await this._updateMapSettings(map, { combat });
+    });
+  }
+
+  async combatPreviousTurn(mapId: string) {
+    return await this._processTask<MapEntity>(`map:${mapId}`, async () => {
+      const map = this.get(mapId);
+      if (!map) {
+        throw new Error(`Map with id "${mapId}" not found.`);
+      }
+      const { participants } = map.combat;
+      if (participants.length === 0) {
+        return map;
+      }
+
+      const currentIndex = participants.findIndex(
+        (participant) => participant.id === map.combat.currentParticipantId
+      );
+
+      if (currentIndex === -1) {
+        const combat: CombatState = {
+          ...map.combat,
+          currentParticipantId: participants[0].id,
+        };
+        return await this._updateMapSettings(map, { combat });
+      }
+
+      // already at the very first turn of the very first round: nothing before that
+      if (map.combat.round === 1 && currentIndex === 0) {
+        return map;
+      }
+
+      const wrapsToEnd = currentIndex === 0;
+      const previousIndex = wrapsToEnd
+        ? participants.length - 1
+        : currentIndex - 1;
+
+      const combat: CombatState = {
+        ...map.combat,
+        round: wrapsToEnd ? map.combat.round - 1 : map.combat.round,
+        currentParticipantId: participants[previousIndex].id,
+      };
+
+      return await this._updateMapSettings(map, { combat });
+    });
+  }
+
+  async combatUpdateParticipant(
+    mapId: string,
+    participantId: string,
+    patch: {
+      name?: string;
+      faction?: CombatFaction;
+      isVisibleForPlayers?: boolean;
+      isDown?: boolean;
+    }
+  ) {
+    return await this._processTask<MapEntity>(`map:${mapId}`, async () => {
+      const map = this.get(mapId);
+      if (!map) {
+        throw new Error(`Map with id "${mapId}" not found.`);
+      }
+
+      const participants = map.combat.participants.map((participant) => {
+        if (participant.id !== participantId) {
+          return participant;
+        }
+        return {
+          ...participant,
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.faction !== undefined ? { faction: patch.faction } : {}),
+          ...(patch.isVisibleForPlayers !== undefined
+            ? { isVisibleForPlayers: patch.isVisibleForPlayers }
+            : {}),
+          ...(patch.isDown !== undefined ? { isDown: patch.isDown } : {}),
+        };
+      });
+
+      const combat: CombatState = { ...map.combat, participants };
+
+      // Keep the linked map token in sync: visibility and alive/down state
+      // are mirrored between a participant and its token.
+      const target = map.combat.participants.find(
+        (participant) => participant.id === participantId
+      );
+      let tokens = map.tokens;
+      if (
+        target?.tokenId &&
+        (patch.isVisibleForPlayers !== undefined || patch.isDown !== undefined)
+      ) {
+        tokens = (map.tokens || []).map((token) =>
+          token.id === target.tokenId
+            ? {
+                ...token,
+                ...(patch.isVisibleForPlayers !== undefined
+                  ? { isVisibleForPlayers: patch.isVisibleForPlayers }
+                  : {}),
+                ...(patch.isDown !== undefined
+                  ? { isAlive: !patch.isDown }
+                  : {}),
+              }
+            : token
+        );
+      }
+
+      return await this._updateMapSettings(map, { combat, tokens });
+    });
+  }
+
+  async combatEnd(mapId: string) {
+    return await this._processTask<MapEntity>(`map:${mapId}`, async () => {
+      const map = this.get(mapId);
+      if (!map) {
+        throw new Error(`Map with id "${mapId}" not found.`);
+      }
+
+      const combat: CombatState = { ...DEFAULT_COMBAT, participants: [] };
+
+      return await this._updateMapSettings(map, { combat });
     });
   }
 

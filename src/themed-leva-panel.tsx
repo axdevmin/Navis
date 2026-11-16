@@ -1,23 +1,24 @@
 import * as React from "react";
 import { LevaPanel } from "leva";
+import { ds } from "./design-system";
 
 const levaTheme = {
   colors: {
-    elevation1: "#1e2330",
-    elevation2: "#161a23",
-    elevation3: "#252b3b",
+    elevation1: "#1c1c1f",
+    elevation2: "#141416",
+    elevation3: "#26262a",
     accent1: "rgba(255,255,255,0.08)",
     accent2: "rgba(255,255,255,0.12)",
-    accent3: "rgba(96,165,250,0.3)",
-    highlight1: "#6b7280",
-    highlight2: "#e8e6e1",
-    highlight3: "#60a5fa",
-    toolTipBackground: "#1e2330",
-    toolTipText: "#e8e6e1",
+    accent3: "rgba(227, 181, 101,0.3)",
+    highlight1: "#6c6c72",
+    highlight2: "#f2f2f2",
+    highlight3: "#e3b565",
+    toolTipBackground: "#1c1c1f",
+    toolTipText: "#f2f2f2",
   },
   fonts: {
-    mono: "inherit",
-    sans: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    mono: ds.font.sans,
+    sans: ds.font.sans,
   },
   fontSizes: {
     root: "12px",

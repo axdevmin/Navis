@@ -1,62 +1,81 @@
+/**
+ * Navis v2 — identité « graphite & laiton ».
+ *
+ * - L'interface est neutre (graphite, sans teinte) : la carte est la seule
+ *   chose colorée à l'écran.
+ * - Un seul accent, le laiton, réservé à l'action principale et à la sélection.
+ * - Vert = « en direct », rouge = danger. Aucune autre couleur d'état.
+ * - Rayons : 12 px pour les fenêtres, 8 px pour les contrôles, 6 px pour les
+ *   touches. Pas de pilules.
+ */
 export const ds = {
   colors: {
-    bg: "#0d0f14",
-    surface: "#161a23",
-    surfaceHover: "#1e2330",
-    surfaceActive: "#252b3b",
-    border: "rgba(255,255,255,0.06)",
+    bg: "#0b0b0c",
+    surface: "#141416",
+    surfaceHover: "#1c1c1f",
+    surfaceActive: "#26262a",
+    border: "rgba(255,255,255,0.08)",
     borderStrong: "rgba(255,255,255,0.12)",
 
-    accent: "#60a5fa",
-    accentHover: "#93c5fd",
-    accentMuted: "rgba(96,165,250,0.12)",
-    accentBorder: "rgba(96,165,250,0.3)",
+    /** Remplissages d'état posés sur une surface. */
+    hover: "rgba(255,255,255,0.06)",
+    selected: "rgba(255,255,255,0.1)",
 
-    textPrimary: "#e8e6e1",
-    textSecondary: "#9ca3af",
-    textMuted: "#6b7280",
-    textAccent: "#60a5fa",
+    accent: "#e3b565",
+    accentHover: "#efc67f",
+    accentMuted: "rgba(227,181,101,0.14)",
+    accentBorder: "rgba(227,181,101,0.38)",
 
-    danger: "#dc4a4a",
-    dangerMuted: "rgba(220,74,74,0.15)",
-    success: "#4ade80",
-    successMuted: "rgba(74,222,128,0.15)",
+    textPrimary: "#f2f2f2",
+    textSecondary: "#a0a0a5",
+    textMuted: "#6c6c72",
+    textAccent: "#e3b565",
+    /** Texte posé sur un fond laiton : encre sombre pour le contraste. */
+    onAccent: "#1b1405",
 
-    overlay: "rgba(13,15,20,0.8)",
-    glass: "rgba(22,26,35,0.85)",
-    glassDark: "rgba(13,15,20,0.75)",
+    danger: "#e5484d",
+    dangerMuted: "rgba(229,72,77,0.14)",
+    success: "#46c17a",
+    successMuted: "rgba(70,193,122,0.14)",
+    warning: "#f5a524",
+
+    overlay: "rgba(0,0,0,0.55)",
+    glass: "rgba(20,20,22,0.92)",
+    glassDark: "rgba(20,20,22,0.92)",
   },
 
   radii: {
+    xs: "6px",
     sm: "6px",
-    md: "10px",
-    lg: "14px",
-    xl: "20px",
+    md: "8px",
+    lg: "12px",
+    xl: "12px",
     full: "9999px",
   },
 
   shadows: {
-    sm: "0 1px 3px rgba(0,0,0,0.4)",
-    md: "0 4px 16px rgba(0,0,0,0.5)",
-    lg: "0 8px 32px rgba(0,0,0,0.6)",
-    accent: "0 0 0 2px rgba(96,165,250,0.4)",
-    glow: "0 0 20px rgba(96,165,250,0.2)",
+    sm: "0 1px 2px rgba(0,0,0,0.4)",
+    md: "0 8px 24px rgba(0,0,0,0.45)",
+    /** Fenêtre flottante : ombre profonde + liseré clair en haut. */
+    lg: "0 16px 48px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
+    accent: "0 0 0 2px rgba(227,181,101,0.55)",
+    glow: "none",
   },
 
   blur: {
     sm: "blur(8px)",
-    md: "blur(16px)",
-    lg: "blur(24px)",
+    md: "blur(20px) saturate(140%)",
+    lg: "blur(28px) saturate(140%)",
   },
 
   transitions: {
-    fast: "0.12s ease",
-    base: "0.2s ease",
-    slow: "0.35s ease",
+    fast: "0.1s ease",
+    base: "0.15s ease",
+    slow: "0.25s ease",
   },
 
   font: {
-    sans: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    sans: "'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
     brand: "folkard, palitino, serif",
   },
 

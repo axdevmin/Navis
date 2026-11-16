@@ -4,19 +4,23 @@ import { randomUUID } from "crypto";
 import * as path from "path";
 import * as fs from "fs-extra";
 import type {
+  CombatFaction,
   MapEntity,
   MapGridEntity,
   Maps,
   TokenType,
   WeatherSettings,
+  MapRoom,
 } from "./maps";
 import * as auth from "./auth";
 import type { Settings } from "./settings";
 import { invalidateResourcesRT } from "./live-query-store";
+import { assignInitiative } from "./combat-lib";
 import {
   MediaType,
   validateMediaTypeExtension,
   getMediaTypeFromExtension,
+  isValidVideoUrl,
 } from "./media-types";
 
 type MapsDependency = {
@@ -186,24 +190,26 @@ export const createMapImageUploadUrl = (params: {
         );
       }
 
-      let record = deps.mapImageUploadRegister.get(params.sha256);
-
       const uuid = randomUUID();
 
       const key = `${params.sha256}_${uuid}`;
 
-      if (!record) {
-        record = {
-          id: key,
-          fileExtension: params.extension,
-          mediaType,
-        };
-      }
+      const record: MapImageUploadRegisterRecord = {
+        id: key,
+        fileExtension: params.extension,
+        mediaType,
+      };
 
       deps.mapImageUploadRegister.set(key, record);
 
+      // The authorization is embedded in the URL so that the upload works
+      // even for clients that do not send the Authorization header.
       return {
-        uploadUrl: `${deps.publicUrl}/files/map-image/${key}.${params.extension}`,
+        uploadUrl: `${deps.publicUrl}/files/map-image/${key}.${
+          params.extension
+        }?authorization=${encodeURIComponent(
+          process.env["DM_PASSWORD"] ?? ""
+        )}`,
         id: key,
       };
     })
@@ -275,6 +281,12 @@ export const mapCreateFromUrl = (params: { title: string; videoUrl: string }) =>
     auth.requireAdmin(),
     RT.chainW(() => RT.ask<MapsDependency>()),
     RT.chain((deps) => () => async (): Promise<MapCreateResult> => {
+      if (isValidVideoUrl(params.videoUrl) === false) {
+        return {
+          type: "error",
+          reason: "The provided video URL is not a valid http(s) URL.",
+        };
+      }
       const createdMap = await deps.maps.createMapFromUrl({
         title: params.title,
         videoUrl: params.videoUrl,
@@ -398,6 +410,33 @@ export const setActiveMap = (params: { activeMapId: string }) =>
     RT.map(() => true)
   );
 
+export type MapUpdateRoomsResult = {
+  updatedMap: MapEntity;
+};
+
+/** Remplace la liste des pièces tracées sur une carte. */
+export const mapUpdateRooms = (params: {
+  mapId: string;
+  rooms: Array<MapRoom>;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain(
+      (deps) => () => () =>
+        deps.maps.updateMapSettings(params.mapId, {
+          rooms: params.rooms,
+        })
+    ),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): MapUpdateRoomsResult => ({ updatedMap }))
+  );
+
 export type MapUpdateWeatherResult = {
   updatedMap: MapEntity;
 };
@@ -422,6 +461,174 @@ export const mapUpdateWeather = (params: {
       )
     ),
     RT.map((updatedMap): MapUpdateWeatherResult => ({ updatedMap }))
+  );
+
+export type CombatResult = {
+  updatedMap: MapEntity;
+};
+
+type CombatParticipantInput = {
+  name: string;
+  faction: CombatFaction;
+  color: string;
+  imageUrl: string | null;
+  tokenId: string | null;
+  isVisibleForPlayers: boolean;
+};
+
+export const combatStart = (params: {
+  mapId: string;
+  participants: Array<CombatParticipantInput>;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain((deps) => () => () => {
+      const withInitiative = assignInitiative(params.participants);
+      return deps.maps.combatStart(params.mapId, withInitiative);
+    }),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatAddParticipant = (params: {
+  mapId: string;
+  participant: CombatParticipantInput;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain((deps) => () => () => {
+      const [withInitiative] = assignInitiative([params.participant]);
+      return deps.maps.combatAddParticipant(params.mapId, withInitiative);
+    }),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatRemoveParticipant = (params: {
+  mapId: string;
+  participantId: string;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain(
+      (deps) => () => () =>
+        deps.maps.combatRemoveParticipant(params.mapId, params.participantId)
+    ),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatReorderParticipants = (params: {
+  mapId: string;
+  orderedParticipantIds: Array<string>;
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain(
+      (deps) => () => () =>
+        deps.maps.combatReorderParticipants(
+          params.mapId,
+          params.orderedParticipantIds
+        )
+    ),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatNextTurn = (params: { mapId: string }) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain((deps) => () => () => deps.maps.combatNextTurn(params.mapId)),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatPreviousTurn = (params: { mapId: string }) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain((deps) => () => () => deps.maps.combatPreviousTurn(params.mapId)),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatUpdateParticipant = (params: {
+  mapId: string;
+  participantId: string;
+  patch: {
+    name?: string;
+    faction?: CombatFaction;
+    isVisibleForPlayers?: boolean;
+    isDown?: boolean;
+  };
+}) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain(
+      (deps) => () => () =>
+        deps.maps.combatUpdateParticipant(
+          params.mapId,
+          params.participantId,
+          params.patch
+        )
+    ),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
+  );
+
+export const combatEnd = (params: { mapId: string }) =>
+  pipe(
+    auth.requireAdmin(),
+    RT.chainW(() => RT.ask<MapsDependency>()),
+    RT.chain((deps) => () => () => deps.maps.combatEnd(params.mapId)),
+    RT.chainW((map) =>
+      pipe(
+        invalidateResourcesRT([`Map:${map.id}`]),
+        RT.map(() => map)
+      )
+    ),
+    RT.map((updatedMap): CombatResult => ({ updatedMap }))
   );
 
 export type MapPing = {

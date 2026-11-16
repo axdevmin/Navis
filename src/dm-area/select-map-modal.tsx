@@ -3,6 +3,7 @@ import graphql from "babel-plugin-relay/macro";
 import { useFragment, useMutation, usePagination, useQuery } from "relay-hooks";
 import { ConnectionHandler } from "relay-runtime";
 import { Modal, ModalDialogSize } from "../modal";
+import { LibraryHeader, LibraryTab } from "./library/library-tabs";
 import * as Icon from "../feather-icons";
 import { Input, InputGroup } from "../input";
 import * as Button from "../button";
@@ -16,6 +17,10 @@ import { selectMapModal_MapDeleteMutation } from "./__generated__/selectMapModal
 import { selectMapModal_MapUpdateTitleMutation } from "./__generated__/selectMapModal_MapUpdateTitleMutation.graphql";
 import { selectMapModal_MapList_MapsFragment$key } from "./__generated__/selectMapModal_MapList_MapsFragment.graphql";
 import { useInvokeOnScrollEnd } from "../hooks/use-invoke-on-scroll-end";
+import { useAccessToken } from "../hooks/use-access-token";
+import { uploadFile } from "../upload-file";
+import { ProgressBar } from "../progress-bar";
+import { useGetIsMounted } from "../hooks/use-get-is-mounted";
 import { selectMapModal_ActiveMap_MapFragment$key } from "./__generated__/selectMapModal_ActiveMap_MapFragment.graphql";
 import { selectMapModal_ActiveMapQuery } from "./__generated__/selectMapModal_ActiveMapQuery.graphql";
 import { selectMapModal_MapCreateFromUrlMutation } from "./__generated__/selectMapModal_MapCreateFromUrlMutation.graphql";
@@ -75,6 +80,8 @@ type ModalStates =
     };
 
 type SelectMapModalProps = {
+  /** Passer à un autre rayon de la bibliothèque (personnages, images). */
+  onSelectTab: (tab: LibraryTab) => void;
   closeModal: () => void;
   setLoadedMapId: (id: string) => void;
   liveMapId: null | string;
@@ -209,22 +216,27 @@ const MapList = (props: {
             }}
           >
             {(() => {
-              const weatherIcons: Record<string, string> = {
-                sun: "☀️",
-                cloudy: "⛅",
-                rain: "🌧️",
-                storm: "⛈️",
-                snow: "❄️",
-                wind: "💨",
-                moon: "🌙",
+              const weatherIcons: Record<string, typeof Icon.Cloud> = {
+                sun: Icon.Sun,
+                cloudy: Icon.Cloud,
+                rain: Icon.CloudRain,
+                storm: Icon.CloudLightning,
+                snow: Icon.CloudSnow,
+                wind: Icon.Wind,
+                moon: Icon.Moon,
               };
-              const icon = weatherIcons[item.node.weatherSettings.type];
-              return icon ? (
-                <span title={item.node.weatherSettings.type}>{icon} </span>
+              const WeatherIcon = weatherIcons[item.node.weatherSettings.type];
+              return WeatherIcon ? (
+                <WeatherIcon
+                  boxSize="14px"
+                  marginRight="8px"
+                  verticalAlign="-2px"
+                  opacity={0.7}
+                />
               ) : null;
             })()}
             {item.node.title}{" "}
-            {item.node.id === props.liveMapId ? "(live)" : null}
+            {item.node.id === props.liveMapId ? "· en direct" : null}
           </ScrollableList.ListItemButton>
         </ScrollableList.ListItem>
       ))}
@@ -317,7 +329,7 @@ const ActiveMap = (props: {
             background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 8,
-            color: "#e8e6e1",
+            color: "#f2f2f2",
             fontFamily: "'Inter', system-ui, sans-serif",
             fontSize: 13,
             lineHeight: 1.5,
@@ -326,8 +338,8 @@ const ActiveMap = (props: {
             boxSizing: "border-box",
           }}
           onFocus={(e) => {
-            e.currentTarget.style.borderColor = "rgba(96,165,250,0.4)";
-            e.currentTarget.style.background = "rgba(96,165,250,0.06)";
+            e.currentTarget.style.borderColor = "rgba(227, 181, 101,0.4)";
+            e.currentTarget.style.background = "rgba(227, 181, 101,0.06)";
           }}
           onBlurCapture={(e) => {
             e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
@@ -407,10 +419,12 @@ export const SelectMapModal = ({
   liveMapId,
   loadedMapId,
   canClose,
+  onSelectTab,
 }: SelectMapModalProps): React.ReactElement => {
   const [activeMapId, setActiveMapId] = React.useState(loadedMapId);
   const [modalState, setModalState] = React.useState<ModalStates | null>(null);
   const [filter, setFilterValue] = React.useState("");
+  const accessToken = useAccessToken();
 
   const response = useQuery<selectMapModal_MapsQuery>(
     SelectMapModal_MapsQuery,
@@ -502,22 +516,13 @@ export const SelectMapModal = ({
     <>
       <Modal onClickOutside={closeIfPossible} onPressEscape={closeIfPossible}>
         <Modal.Dialog>
-          <Modal.Header>
-            <Modal.Heading2>
-              <Icon.Map boxSize="28px" /> Bibliothèque de cartes
-            </Modal.Heading2>
-            <div style={{ flex: 1, textAlign: "right" }}>
-              {canClose ? (
-                <Button.Tertiary
-                  tabIndex={1}
-                  style={{ marginLeft: 8 }}
-                  onClick={closeModal}
-                >
-                  Fermer
-                </Button.Tertiary>
-              ) : null}
-            </div>
-          </Modal.Header>
+          <LibraryHeader
+            activeTab="maps"
+            onSelectTab={(tab) => {
+              if (tab !== "maps") onSelectTab(tab);
+            }}
+            onClose={canClose ? closeModal : undefined}
+          />
           <Modal.Body style={{ display: "flex", height: "80vh" }} noPadding>
             <Modal.Aside>
               <div
@@ -642,7 +647,8 @@ export const SelectMapModal = ({
               setModalState(null);
             }}
             file={modalState.data.file}
-            createMap={async (title) => {
+            createMap={async (title, onProgress) => {
+              onProgress({ phase: "hashing", fraction: null });
               const hash = await generateSHA256FileHash(modalState.data.file);
               // 1. request file upload
               const result = await mapImageRequestUpload({
@@ -655,26 +661,36 @@ export const SelectMapModal = ({
               });
 
               // 2. upload file
-              const uploadResponse = await fetch(
-                result.mapImageRequestUpload.uploadUrl,
-                {
-                  method: "PUT",
-                  body: modalState.data.file,
-                }
-              );
+              onProgress({ phase: "uploading", fraction: 0 });
+              const uploadTask = uploadFile({
+                url: result.mapImageRequestUpload.uploadUrl,
+                body: modalState.data.file,
+                headers: {
+                  Authorization: accessToken ? `Bearer ${accessToken}` : null,
+                },
+                onProgress: (progress) =>
+                  onProgress({
+                    phase: "uploading",
+                    fraction: progress.fraction,
+                  }),
+              });
+              const uploadResult = await uploadTask.done;
 
-              if (uploadResponse.status !== 200) {
-                const body = await uploadResponse.text();
+              if (uploadResult.type === "abort") {
+                throw new Error("L'envoi du fichier a été interrompu.");
+              }
+              if (uploadResult.type === "error") {
                 throw new Error(
-                  "Received invalid response code: " +
-                    uploadResponse.status +
-                    "\n\n" +
-                    body
+                  `L'envoi du fichier a échoué (code ${uploadResult.status}).` +
+                    (uploadResult.responseText
+                      ? `\n\n${uploadResult.responseText}`
+                      : "")
                 );
               }
 
               // 3. create map
-              await mapCreate({
+              onProgress({ phase: "creating", fraction: null });
+              const createResult = await mapCreate({
                 variables: {
                   input: {
                     title,
@@ -713,7 +729,11 @@ export const SelectMapModal = ({
                 },
               });
 
-              setModalState(null);
+              if (createResult.mapCreate.__typename === "MapCreateError") {
+                throw new Error(
+                  `La création de la carte a échoué : ${createResult.mapCreate.reason}`
+                );
+              }
             }}
           />
         ) : modalState.type === ModalType.CREATE_MAP_FROM_URL ? (
@@ -855,6 +875,17 @@ const extractDefaultTitleFromFileName = (fileName: string) => {
   return parts.join(".");
 };
 
+type CreateMapProgress = {
+  phase: "hashing" | "uploading" | "creating";
+  fraction: number | null;
+};
+
+const createMapProgressLabel: Record<CreateMapProgress["phase"], string> = {
+  hashing: "Préparation du fichier…",
+  uploading: "Envoi du fichier…",
+  creating: "Création de la carte…",
+};
+
 const CreateNewMapModal = ({
   closeModal,
   file,
@@ -862,12 +893,20 @@ const CreateNewMapModal = ({
 }: {
   closeModal: () => void;
   file: File;
-  createMap: (title: string) => void;
+  createMap: (
+    title: string,
+    onProgress: (progress: CreateMapProgress) => void
+  ) => Promise<void>;
 }): React.ReactElement => {
   const [inputValue, setInputValue] = React.useState(() =>
     extractDefaultTitleFromFileName(file.name)
   );
-  const [error, setError] = React.useState<string | null>("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [progress, setProgress] = React.useState<CreateMapProgress | null>(
+    null
+  );
+  const getIsMounted = useGetIsMounted();
+  const isBusy = progress !== null;
 
   const onChangeInputValue = React.useCallback(
     (ev) => {
@@ -877,8 +916,37 @@ const CreateNewMapModal = ({
     [setInputValue, setError]
   );
 
+  const submit = async () => {
+    if (isBusy) return;
+    if (inputValue.trim().length === 0) {
+      setError("Veuillez saisir un nom de carte.");
+      return;
+    }
+    setError(null);
+    setProgress({ phase: "hashing", fraction: null });
+    try {
+      await createMap(inputValue.trim(), (progress) => {
+        if (getIsMounted()) setProgress(progress);
+      });
+      if (getIsMounted()) closeModal();
+    } catch (err) {
+      if (getIsMounted() === false) return;
+      setProgress(null);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue."
+      );
+    }
+  };
+
+  const closeUnlessBusy = () => {
+    if (isBusy) return;
+    closeModal();
+  };
+
   return (
-    <Modal onClickOutside={closeModal} onPressEscape={closeModal}>
+    <Modal onClickOutside={closeUnlessBusy} onPressEscape={closeUnlessBusy}>
       <Modal.Dialog size={ModalDialogSize.SMALL}>
         <Modal.Header>
           <Modal.Heading3>Nouvelle carte</Modal.Heading3>
@@ -890,29 +958,38 @@ const CreateNewMapModal = ({
             value={inputValue}
             onChange={onChangeInputValue}
             error={error}
+            disabled={isBusy}
           />
+          {progress ? (
+            <div style={{ marginTop: 16 }}>
+              <ProgressBar
+                value={
+                  progress.phase === "uploading" ? progress.fraction : null
+                }
+                label={createMapProgressLabel[progress.phase]}
+              />
+            </div>
+          ) : null}
         </Modal.Body>
         <Modal.Footer>
           <Modal.Actions>
             <Modal.ActionGroup>
               <div>
-                <Button.Tertiary onClick={closeModal} type="button">
+                <Button.Tertiary
+                  onClick={closeModal}
+                  type="button"
+                  disabled={isBusy}
+                >
                   Annuler
                 </Button.Tertiary>
               </div>
               <div>
                 <Button.Primary
                   type="submit"
-                  onClick={() => {
-                    if (inputValue.trim().length === 0) {
-                      setError("Veuillez saisir un nom de carte.");
-                      return;
-                    }
-                    createMap(inputValue);
-                    closeModal();
-                  }}
+                  onClick={submit}
+                  disabled={isBusy}
                 >
-                  Créer la carte
+                  {isBusy ? "Création en cours…" : "Créer la carte"}
                 </Button.Primary>
               </div>
             </Modal.ActionGroup>

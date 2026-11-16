@@ -15,7 +15,17 @@
     "jsx": "react",
     "forceConsistentCasingInFileNames": true,
     "downlevelIteration": true,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "baseUrl": ".",
+    "paths": {
+      // Some @chakra-ui d.ts files deep-import the raw "src" TypeScript files
+      // of @chakra-ui/descendant, which are not covered by skipLibCheck and
+      // fail to compile with recent TypeScript versions. Redirect them to the
+      // compiled declaration files instead.
+      "@chakra-ui/descendant/src/*": [
+        "node_modules/@chakra-ui/descendant/dist/declarations/src/*"
+      ]
+    }
   },
   "include": ["./src"]
 }

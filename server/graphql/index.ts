@@ -47,6 +47,7 @@ import * as UserModule from "./modules/user";
 import * as NotesModule from "./modules/notes";
 import * as TokenImageModule from "./modules/token-image";
 import * as MapModule from "./modules/map";
+import * as LibraryCharacterModule from "./modules/library-character";
 import { pipe } from "fp-ts/lib/function";
 import * as E from "fp-ts/lib/Either";
 import * as RT from "fp-ts/lib/ReaderTask";
@@ -87,6 +88,7 @@ const Query = t.queryType({
     ...NotesModule.queryFields,
     ...TokenImageModule.queryFields,
     ...MapModule.queryFields,
+    ...LibraryCharacterModule.queryFields,
     nodeField,
   ],
 });
@@ -108,6 +110,7 @@ const Mutation = t.mutationType({
     ...NotesModule.mutationFields,
     ...TokenImageModule.mutationFields,
     ...MapModule.mutationFields,
+    ...LibraryCharacterModule.mutationFields,
   ],
 });
 

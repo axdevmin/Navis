@@ -10,11 +10,11 @@ import { useChangeNameMutation } from "./change-name-mutation";
 import styled from "@emotion/styled/macro";
 import * as Icon from "../feather-icons";
 import { useSoundSettings } from "../sound-settings";
+import { ds } from "../design-system";
 
 const LabelText = styled.div`
-  text-transform: uppercase;
-  font-weight: bold;
-  color: rgb(62, 76, 88);
+  font-weight: 500;
+  color: ${ds.colors.textSecondary};
   letter-spacing: 1px;
   padding-bottom: 8px;
 `;

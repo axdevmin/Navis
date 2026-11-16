@@ -5,11 +5,22 @@ import React from "react";
 import styled from "@emotion/styled/macro";
 import { createIcon } from "@chakra-ui/icon";
 
-export const Label = styled.div`
-  font-size: 8px;
-  font-weight: bold;
+const LabelBase = styled.div`
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
   color: ${(p) => p.color || "inherit"};
 `;
+
+/**
+ * Libellé d'un bouton de barre d'outils. Dans un dock horizontal il s'affiche
+ * à côté de l'icône ; dans le rail vertical il devient l'infobulle du bouton.
+ */
+export const Label = (
+  props: React.ComponentProps<typeof LabelBase>
+): React.ReactElement => <LabelBase data-toolbar-label {...props} />;
 
 export const FilePlus = createIcon({
   displayName: "FilePlus",
@@ -1012,4 +1023,312 @@ export const Columns = createIcon({
       stroke="currentColor"
     />
   ),
+});
+export const Sun = createIcon({
+  displayName: "Sun",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <circle cx="12" cy="12" r="5" />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const Cloud = createIcon({
+  displayName: "Cloud",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const CloudRain = createIcon({
+  displayName: "CloudRain",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M16 13v8M8 13v8M12 15v8" />
+      <path d="M20 16.58A5 5 0 0018 7h-1.26A8 8 0 104 15.25" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const CloudLightning = createIcon({
+  displayName: "CloudLightning",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M19 16.9A5 5 0 0018 7h-1.26a8 8 0 10-11.62 9" />
+      <path d="M13 11l-4 6h6l-4 6" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const CloudSnow = createIcon({
+  displayName: "CloudSnow",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M20 17.58A5 5 0 0018 8h-1.26A8 8 0 104 16.25" />
+      <path d="M8 16h.01M8 20h.01M12 18h.01M12 22h.01M16 16h.01M16 20h.01" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const Wind = createIcon({
+  displayName: "Wind",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M9.59 4.59A2 2 0 1111 8H2m10.59 11.41A2 2 0 1014 16H2m15.73-8.27A2.5 2.5 0 1119.5 12H2" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const Moon = createIcon({
+  displayName: "Moon",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const Slash = createIcon({
+  displayName: "Slash",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M4.93 4.93l14.14 14.14" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const MoreHorizontal = createIcon({
+  displayName: "MoreHorizontal",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+      <circle cx="5" cy="12" r="1" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const FileText = createIcon({
+  displayName: "FileText",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const Swords = createIcon({
+  displayName: "Swords",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M14.5 17.5L3 6V3h3l11.5 11.5" />
+      <path d="M13 19l6-6M16 16l4 4M19 21l2-2" />
+      <path d="M14.5 6.5L18 3h3v3l-3.5 3.5" />
+      <path d="M5 14l4 4M7 17l-3 3M3 19l2 2" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const Skull = createIcon({
+  displayName: "Skull",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <circle cx="9" cy="12" r="1" />
+      <circle cx="15" cy="12" r="1" />
+      <path d="M8 20v2h8v-2" />
+      <path d="M12.5 17l-.5-1-.5 1h1z" />
+      <path d="M16 20a2 2 0 001.56-3.25 8 8 0 10-11.12 0A2 2 0 008 20" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const Command = createIcon({
+  displayName: "Command",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M18 3a3 3 0 00-3 3v12a3 3 0 003 3 3 3 0 003-3 3 3 0 00-3-3H6a3 3 0 00-3 3 3 3 0 003 3 3 3 0 003-3V6a3 3 0 00-3-3 3 3 0 00-3 3 3 3 0 003 3h12a3 3 0 003-3 3 3 0 00-3-3z" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const CornerDownLeft = createIcon({
+  displayName: "CornerDownLeft",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M9 10l-5 5 5 5" />
+      <path d="M20 4v7a4 4 0 01-4 4H4" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const AlertTriangle = createIcon({
+  displayName: "AlertTriangle",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      <path d="M12 9v4M12 17h.01" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const Box = createIcon({
+  displayName: "Box",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+      <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+export const RotateCW = createIcon({
+  displayName: "RotateCW",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M23 4v6h-6" />
+      <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
 });

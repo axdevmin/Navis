@@ -17,6 +17,8 @@ const BACKGROUND_IMAGES = [
   "groupe_origin_tavern.png",
   "groupe_origin_explo.png",
   "darnell_origin_group.png",
+  "roi_liche.png",
+  "viviana_lidda.png",
 ];
 
 export const useRandomBackground = (): string => {

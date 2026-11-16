@@ -2,14 +2,50 @@ import * as React from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "react-three-fiber";
 import type { WeatherType, WeatherSettings } from "./weather-types";
+import { getGraphicsSettings } from "./graphics-quality";
 
 export type { WeatherType, WeatherSettings };
 
 type WeatherConfig = WeatherSettings;
 
-const RAIN_COUNT = 1200;
-const STORM_COUNT = 2500;
-const SNOW_COUNT = 500;
+// Particle counts are scaled down on low end hardware, where the per frame
+// position update of every particle is the dominant cost.
+const particleCount = (count: number) =>
+  Math.max(1, Math.round(count * getGraphicsSettings().weatherParticleScale));
+
+const RAIN_COUNT = particleCount(1200);
+const STORM_COUNT = particleCount(2500);
+const SNOW_COUNT = particleCount(500);
+
+/**
+ * Gates the weather simulation to the configured update rate and reports how
+ * many nominal 60Hz frames elapsed, so particles keep the same apparent speed
+ * whether the device renders at 60, 30 or fewer frames per second.
+ */
+const useSimulationStep = () => {
+  const lastRef = React.useRef(0);
+  const minIntervalMs = React.useMemo(() => {
+    const hz = getGraphicsSettings().weatherUpdateHz;
+    return hz > 0 ? 1000 / hz : 0;
+  }, []);
+
+  return React.useCallback((): number => {
+    const now =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    const previous = lastRef.current;
+    if (previous === 0) {
+      lastRef.current = now;
+      return 1;
+    }
+    const elapsed = now - previous;
+    if (elapsed < minIntervalMs) {
+      return 0;
+    }
+    lastRef.current = now;
+    // Clamped so a stall or a background tab does not teleport every particle.
+    return Math.min(Math.max(elapsed / (1000 / 60), 0.5), 4);
+  }, [minIntervalMs]);
+};
 
 type WeatherDimensions = { width: number; height: number };
 
@@ -113,16 +149,21 @@ const RainSystem = React.memo(
       }
     }, [config.type, count]);
 
+    const nextStep = useSimulationStep();
+
     useFrame(() => {
       const state = stateRef.current;
       if (!state || !geomRef.current) return;
+
+      const step = nextStep();
+      if (step === 0) return;
 
       const { wx, wy } = windComponents(config.windAngle);
       const s = baseSpeed * config.intensity;
 
       for (let i = 0; i < count; i++) {
-        const vx = wx * s * 0.5 + state.velocities[i * 2] * 0.05;
-        const vy = wy * s - s;
+        const vx = (wx * s * 0.5 + state.velocities[i * 2] * 0.05) * step;
+        const vy = (wy * s - s) * step;
 
         state.positions[i * 6 + 0] += vx;
         state.positions[i * 6 + 1] += vy;
@@ -229,12 +270,17 @@ const SnowSystem = React.memo(
       }
     }, [config.type]);
 
+    const nextStep = useSimulationStep();
+
     useFrame(() => {
       if (!geomRef.current) return;
+      const step = nextStep();
+      if (step === 0) return;
+
       const p = pos.current;
       const v = vel.current;
       const { wx } = windComponents(config.windAngle);
-      const speed = config.intensity;
+      const speed = config.intensity * step;
       const t = Date.now() * 0.001;
 
       for (let i = 0; i < SNOW_COUNT; i++) {
@@ -284,7 +330,7 @@ const SnowSystem = React.memo(
 
 // ─── WIND ────────────────────────────────────────────────────────────────────
 
-const WIND_COUNT = 500;
+const WIND_COUNT = particleCount(500);
 
 function spawnWindGust(
   pos: Float32Array,
@@ -352,13 +398,18 @@ const WindSystem = React.memo(
       }
     }, [config.type]);
 
+    const nextStep = useSimulationStep();
+
     useFrame(() => {
       if (!geomRef.current) return;
+      const step = nextStep();
+      if (step === 0) return;
+
       const p = posRef.current;
       const v = velRef.current;
       const t = Date.now() * 0.001;
       const gustFactor = 0.6 + 0.4 * Math.abs(Math.sin(t * 0.8));
-      const speed = config.intensity * gustFactor;
+      const speed = config.intensity * gustFactor * step;
 
       for (let i = 0; i < WIND_COUNT; i++) {
         p[i * 6 + 0] += v[i * 2] * speed;
