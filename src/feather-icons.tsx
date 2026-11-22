@@ -1426,3 +1426,29 @@ export const CloudBlood = createIcon({
     boxSize: "30px",
   },
 });
+
+/** Lever de soleil (moment « Matin »). */
+export const Sunrise = createIcon({
+  displayName: "Sunrise",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M17 18a5 5 0 00-10 0" />
+      <path d="M12 2v7" />
+      <path d="M4.22 10.22l1.42 1.42" />
+      <path d="M1 18h2" />
+      <path d="M21 18h2" />
+      <path d="M18.36 11.64l1.42-1.42" />
+      <path d="M23 22H1" />
+      <path d="M8 6l4-4 4 4" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});

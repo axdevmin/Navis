@@ -148,12 +148,74 @@ export type WeatherType =
   | "fog"
   | "bloodRain";
 
+export type TimeOfDay = "morning" | "day" | "night";
+
 export type WeatherSettings = {
+  /**
+   * Précipitations et ciel. "sun" et "moon" sont d'anciennes valeurs, devenues
+   * des moments de la journée (voir normalizeWeatherSettings).
+   */
   type: WeatherType;
   intensity: number;
   windAngle: number;
   /** Les tokens passent par-dessus la météo au lieu d'être voilés par elle. */
   tokensAboveWeather?: boolean;
+  /** Moment de la journée, indépendant de la météo (nuit + pluie…). */
+  timeOfDay?: TimeOfDay;
+  /** Force de l'effet du moment : lumière du matin, soleil, obscurité. */
+  timeIntensity?: number;
+  /** Direction de la lumière, de −60° (gauche) à 60° (droite). */
+  lightAngle?: number;
+  /** Lucioles la nuit, de 0 à 1. */
+  fireflies?: number;
+};
+
+const clampNumber = (
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number
+) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
+
+/**
+ * Réglages complets et cohérents. Les anciennes météos « Soleil » et « Nuit »
+ * deviennent le moment de la journée correspondant, avec les mêmes réglages.
+ */
+export const normalizeWeatherSettings = (
+  raw: Partial<WeatherSettings> | null | undefined
+): WeatherSettings => {
+  const base = { ...DEFAULT_WEATHER, ...(raw ?? {}) };
+  const settings: WeatherSettings = {
+    type: base.type,
+    intensity: clampNumber(base.intensity, 0, 1, DEFAULT_WEATHER.intensity),
+    windAngle: clampNumber(base.windAngle, -60, 60, 0),
+    tokensAboveWeather: base.tokensAboveWeather === true,
+    timeOfDay:
+      base.timeOfDay === "morning" || base.timeOfDay === "night"
+        ? base.timeOfDay
+        : "day",
+    timeIntensity: clampNumber(base.timeIntensity, 0, 1, 0),
+    lightAngle: clampNumber(base.lightAngle, -60, 60, -30),
+    fireflies: clampNumber(base.fireflies, 0, 1, 0.5),
+  };
+  if (base.type === "sun") {
+    settings.type = "none";
+    settings.timeOfDay = "day";
+    settings.timeIntensity = settings.intensity;
+    settings.lightAngle = clampNumber(base.windAngle, -60, 60, -30);
+    settings.windAngle = 0;
+  } else if (base.type === "moon") {
+    settings.type = "none";
+    settings.timeOfDay = "night";
+    settings.timeIntensity = settings.intensity;
+    // l'ancien second curseur de la nuit réglait les effets (0 à 1)
+    settings.fireflies = clampNumber(base.windAngle, 0, 1, 0.5);
+    settings.windAngle = 0;
+  }
+  return settings;
 };
 
 /**
@@ -372,8 +434,10 @@ export class Maps {
             : "image",
         weatherSettings:
           "weatherSettings" in rawMap && rawMap.weatherSettings
-            ? (rawMap.weatherSettings as WeatherSettings)
-            : { ...DEFAULT_WEATHER },
+            ? normalizeWeatherSettings(
+                rawMap.weatherSettings as Partial<WeatherSettings>
+              )
+            : normalizeWeatherSettings(null),
         rooms: prepareRooms("rooms" in rawMap ? rawMap.rooms : null),
         combat: prepareCombat(
           "combat" in rawMap

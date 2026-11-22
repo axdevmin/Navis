@@ -84,6 +84,16 @@ const GraphQLWeatherTypeEnum = t.enumType<WeatherType>({
   ],
 });
 
+const GraphQLTimeOfDayEnum = t.enumType<"morning" | "day" | "night">({
+  name: "TimeOfDay",
+  description: "Moment de la journée, indépendant de la météo.",
+  values: [
+    { name: "morning", value: "morning" as const },
+    { name: "day", value: "day" as const },
+    { name: "night", value: "night" as const },
+  ],
+});
+
 const GraphQLWeatherSettingsType = t.objectType<WeatherSettings>({
   name: "WeatherSettings",
   fields: () => [
@@ -96,6 +106,26 @@ const GraphQLWeatherSettingsType = t.objectType<WeatherSettings>({
       type: t.NonNull(t.Boolean),
       resolve: (source) => source.tokensAboveWeather ?? false,
     }),
+    t.field({
+      name: "timeOfDay",
+      type: t.NonNull(GraphQLTimeOfDayEnum),
+      resolve: (source) => source.timeOfDay ?? "day",
+    }),
+    t.field({
+      name: "timeIntensity",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.timeIntensity ?? 0,
+    }),
+    t.field({
+      name: "lightAngle",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.lightAngle ?? -30,
+    }),
+    t.field({
+      name: "fireflies",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.fireflies ?? 0.5,
+    }),
   ],
 });
 
@@ -107,6 +137,10 @@ const GraphQLWeatherSettingsInputType = t.inputObjectType({
     windAngle: { type: t.NonNullInput(t.Float) },
     /** Absent : la valeur actuelle de la carte est conservée. */
     tokensAboveWeather: { type: t.Boolean },
+    timeOfDay: { type: GraphQLTimeOfDayEnum },
+    timeIntensity: { type: t.Float },
+    lightAngle: { type: t.Float },
+    fireflies: { type: t.Float },
   }),
 });
 
@@ -783,6 +817,10 @@ export const mutationFields = [
             windAngle: input.weatherSettings.windAngle,
             tokensAboveWeather:
               input.weatherSettings.tokensAboveWeather ?? undefined,
+            timeOfDay: input.weatherSettings.timeOfDay ?? undefined,
+            timeIntensity: input.weatherSettings.timeIntensity ?? undefined,
+            lightAngle: input.weatherSettings.lightAngle ?? undefined,
+            fireflies: input.weatherSettings.fireflies ?? undefined,
           },
         }),
         context

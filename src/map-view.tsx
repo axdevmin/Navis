@@ -76,7 +76,7 @@ import { mapView_MapPingRenderer_MapFragment$key } from "./__generated__/mapView
 import { mapView_MapPingSubscription } from "./__generated__/mapView_MapPingSubscription.graphql";
 import { UpdateTokenContext } from "./update-token-context";
 import { IsDungeonMasterContext } from "./is-dungeon-master-context";
-import { WeatherSystem } from "./weather-system";
+import { WeatherSystem, hasTimeOfDayEffect } from "./weather-system";
 import { RenderDemand, RenderScheduler } from "./render-scheduler";
 import { tokenSnapshots } from "./undo-history";
 import { WeatherShelter } from "./map-rooms";
@@ -2526,6 +2526,10 @@ const MapFragment = graphql`
       intensity
       windAngle
       tokensAboveWeather
+      timeOfDay
+      timeIntensity
+      lightAngle
+      fireflies
     }
     ...mapView_MapViewRendererFragment
   }
@@ -2672,10 +2676,13 @@ export const MapView = (props: {
     : null;
 
   // Ce que la scène exige quand personne n'y touche (voir RenderScheduler).
-  const weatherType =
-    (map.weatherSettings as WeatherSettings | null)?.type ?? "none";
+  const weatherSettings = map.weatherSettings as WeatherSettings | null;
+  const weatherType = weatherSettings?.type ?? "none";
+  const isWeatherAnimated =
+    weatherType !== "none" ||
+    (weatherSettings !== null && hasTimeOfDayEffect(weatherSettings));
   const renderDemand: RenderDemand =
-    weatherType !== "none" || (isAnimatedMedia && isAnimating)
+    isWeatherAnimated || (isAnimatedMedia && isAnimating)
       ? "continuous"
       : isDungeonMaster
       ? // le brouillard du MJ est statique : rien à redessiner au repos

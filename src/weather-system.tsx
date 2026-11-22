@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "react-three-fiber";
-import type { WeatherType, WeatherSettings } from "./weather-types";
+import type { TimeOfDay, WeatherType, WeatherSettings } from "./weather-types";
 import { getGraphicsSettings } from "./graphics-quality";
 import { requestMapRender } from "./render-scheduler";
 
@@ -749,13 +749,17 @@ type FogPatch = {
 
 const FogOverlay = ({
   config,
+  density,
   dimensions,
   clippingPlanes,
 }: {
   config: WeatherConfig;
+  /** Densité imposée (brume légère du matin) au lieu de celle de la météo. */
+  density?: number;
   dimensions: WeatherDimensions;
   clippingPlanes: THREE.Plane[];
 }) => {
+  const strength = density ?? fogStrength(config);
   const texture = React.useMemo(createFogTexture, []);
   const meshesRef = React.useRef<Array<THREE.Mesh | null>>([]);
   const nextStep = useSimulationStep();
@@ -819,8 +823,7 @@ const FogOverlay = ({
       // la brume « respire » : son opacité ondule très lentement
       const breathing = 0.8 + 0.2 * Math.sin(t * 0.22 + patch.phase);
       (mesh.material as THREE.MeshBasicMaterial).opacity =
-        Math.min(1, patch.opacity * breathing * fogStrength(config)) *
-        config.fade;
+        Math.min(1, patch.opacity * breathing * strength) * config.fade;
     });
   });
 
@@ -835,7 +838,7 @@ const FogOverlay = ({
           attach="material"
           color={0xc6ced8}
           transparent
-          opacity={0.2 * fogStrength(config) * config.fade}
+          opacity={0.2 * strength * config.fade}
           depthWrite={false}
           depthTest={false}
         />
@@ -1513,6 +1516,154 @@ const MoonOverlay = ({
   );
 };
 
+// ─── MATIN ───────────────────────────────────────────────────────────────────
+// Lumière basse et tamisée, rosée et dorée, venue d'un côté ; un voile de
+// brume léger traîne au ras du sol.
+
+const MORNING_POLLEN_COUNT = particleCount(40);
+
+const MorningOverlay = ({
+  intensity,
+  lightAngle,
+  fade,
+  dimensions,
+  clippingPlanes,
+}: {
+  intensity: number;
+  lightAngle: number;
+  fade: number;
+  dimensions: WeatherDimensions;
+  clippingPlanes: THREE.Plane[];
+}) => {
+  const glowTexture = React.useMemo(createGlowTexture, []);
+  const vignetteTexture = React.useMemo(createVignetteTexture, []);
+  // soleil bas : la lumière vient de loin, presque à l'horizon
+  const [sunX, sunY] = lightSourcePosition(lightAngle, dimensions, 0.65);
+  const diagonal = Math.hypot(dimensions.width, dimensions.height);
+  const strength = intensity * fade;
+  const hazeConfig = React.useMemo<WeatherConfig>(
+    () => ({
+      type: "fog",
+      intensity: 0.1,
+      windAngle: lightAngle > 0 ? 180 : 0,
+      fade,
+    }),
+    [lightAngle, fade]
+  );
+
+  return (
+    <>
+      {/* lumière encore faible : la carte est un peu voilée de bleu */}
+      <FullPlane
+        dimensions={dimensions}
+        color={0x1d2440}
+        opacity={0.16 * strength}
+      />
+      {/* teinte rosée et dorée du petit matin */}
+      <FullPlane
+        dimensions={dimensions}
+        color={0xffb89a}
+        opacity={0.14 * strength}
+        additive
+      />
+      <FullPlane
+        dimensions={dimensions}
+        color={0x1a1420}
+        map={vignetteTexture}
+        opacity={0.3 * strength}
+      />
+      {/* lumière rasante venue d'un côté */}
+      <mesh position={[sunX, sunY, 0]} renderOrder={8}>
+        <planeBufferGeometry
+          attach="geometry"
+          args={[diagonal * 1.3, diagonal * 1.3]}
+        />
+        <meshBasicMaterial
+          attach="material"
+          map={glowTexture}
+          color={0xffc8a0}
+          transparent
+          opacity={0.5 * strength}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          depthTest={false}
+          clippingPlanes={clippingPlanes}
+        />
+      </mesh>
+      {/* brume légère du matin */}
+      <FogOverlay
+        config={hazeConfig}
+        density={0.55 * intensity}
+        dimensions={dimensions}
+        clippingPlanes={clippingPlanes}
+      />
+      <FloatingLights
+        count={MORNING_POLLEN_COUNT}
+        color={[1, 0.85, 0.75]}
+        size={3}
+        wander={0.0003}
+        blinkSpeed={0.6}
+        darkRatio={0}
+        brightness={0.6 * strength}
+        dimensions={dimensions}
+        clippingPlanes={clippingPlanes}
+      />
+    </>
+  );
+};
+
+// ─── MOMENT DE LA JOURNÉE ────────────────────────────────────────────────────
+
+type TimeSettings = {
+  timeOfDay: TimeOfDay;
+  timeIntensity: number;
+  lightAngle: number;
+  fireflies: number;
+};
+
+const TimeOfDayEffect = ({
+  settings,
+  fade,
+  dimensions,
+}: {
+  settings: TimeSettings;
+  fade: number;
+  dimensions: WeatherDimensions;
+}) => {
+  const clippingPlanes = useClippingPlanes(dimensions);
+  if (settings.timeOfDay === "morning") {
+    return (
+      <MorningOverlay
+        intensity={settings.timeIntensity}
+        lightAngle={settings.lightAngle}
+        fade={fade}
+        dimensions={dimensions}
+        clippingPlanes={clippingPlanes}
+      />
+    );
+  }
+  if (settings.timeOfDay === "night") {
+    return (
+      <MoonOverlay
+        darkness={settings.timeIntensity}
+        fade={fade}
+        effectIntensity={settings.fireflies * fade}
+        lightAngle={settings.lightAngle}
+        dimensions={dimensions}
+        clippingPlanes={clippingPlanes}
+      />
+    );
+  }
+  return (
+    <SunOverlay
+      intensity={settings.timeIntensity * fade}
+      lightAngle={settings.lightAngle}
+      dimensions={dimensions}
+      clippingPlanes={clippingPlanes}
+    />
+  );
+};
+
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
 type Props = {
@@ -1563,14 +1714,13 @@ const RAIN_PALETTES: Record<"rain" | "storm" | "bloodRain", RainPalette> = {
   },
 };
 
-const WeatherSystemInner = ({ config, dimensions }: Props) => {
+/** Plans qui rognent les effets aux bords de la carte. */
+const useClippingPlanes = (dimensions: WeatherDimensions): THREE.Plane[] => {
   const { gl } = useThree();
-
   React.useEffect(() => {
     gl.localClippingEnabled = true;
   }, [gl]);
-
-  const clippingPlanes = React.useMemo(
+  return React.useMemo(
     () => [
       new THREE.Plane(new THREE.Vector3(1, 0, 0), dimensions.width / 2),
       new THREE.Plane(new THREE.Vector3(-1, 0, 0), dimensions.width / 2),
@@ -1579,37 +1729,15 @@ const WeatherSystemInner = ({ config, dimensions }: Props) => {
     ],
     [dimensions.width, dimensions.height]
   );
+};
 
-  if (config.type === "sun") {
-    return (
-      <SunOverlay
-        intensity={config.intensity * config.fade}
-        lightAngle={config.windAngle}
-        dimensions={dimensions}
-        clippingPlanes={clippingPlanes}
-      />
-    );
-  }
+const WeatherSystemInner = ({ config, dimensions }: Props) => {
+  const clippingPlanes = useClippingPlanes(dimensions);
 
   if (config.type === "cloudy") {
     return (
       <CloudyOverlay
         config={config}
-        dimensions={dimensions}
-        clippingPlanes={clippingPlanes}
-      />
-    );
-  }
-
-  if (config.type === "moon") {
-    return (
-      <MoonOverlay
-        darkness={config.intensity}
-        fade={config.fade}
-        effectIntensity={
-          Math.max(0, Math.min(1, config.windAngle)) * config.fade
-        }
-        lightAngle={-35}
         dimensions={dimensions}
         clippingPlanes={clippingPlanes}
       />
@@ -1717,9 +1845,10 @@ const WeatherSystemInner = ({ config, dimensions }: Props) => {
 /** Durée du fondu quand le MJ change de météo. */
 const WEATHER_FADE_MS = 2400;
 
-type WeatherLayer = {
+type FadeLayer<T> = {
   id: number;
-  settings: WeatherSettings;
+  key: string;
+  value: T;
   /** Début de l'apparition (−Infinity : déjà là au chargement). */
   enteredAt: number;
   /** Début de la disparition, null tant que la couche est active. */
@@ -1728,7 +1857,7 @@ type WeatherLayer = {
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
-const layerFade = (layer: WeatherLayer, now: number): number => {
+const layerFade = (layer: FadeLayer<unknown>, now: number): number => {
   const fadeAt = (time: number) =>
     clamp01((time - layer.enteredAt) / WEATHER_FADE_MS);
   if (layer.leftAt === null) return fadeAt(now);
@@ -1737,13 +1866,110 @@ const layerFade = (layer: WeatherLayer, now: number): number => {
   );
 };
 
-const isLayerSettled = (layer: WeatherLayer, now: number): boolean =>
+const isLayerSettled = (layer: FadeLayer<unknown>, now: number): boolean =>
   layer.leftAt === null && now - layer.enteredAt >= WEATHER_FADE_MS;
 
 /**
- * Passer d'une météo à une autre se fait en fondu : l'ancienne s'efface
- * pendant que la nouvelle apparaît. Changer l'intensité ou le vent d'une
- * même météo reste immédiat.
+ * Fondu entre deux états : quand `layerKey` change, l'ancien état s'efface
+ * pendant que le nouveau apparaît. Un changement de réglage sans changement
+ * de clé est immédiat. `null` signifie « rien à afficher ».
+ */
+const CrossFade = <T,>(props: {
+  layerKey: string | null;
+  value: T;
+  /** Identité des réglages, pour ne réagir qu'à un vrai changement. */
+  valueSignature: string;
+  render: (value: T, fade: number) => React.ReactNode;
+}) => {
+  const nextIdRef = React.useRef(1);
+  const [layers, setLayers] = React.useState<Array<FadeLayer<T>>>(() =>
+    props.layerKey === null
+      ? []
+      : [
+          {
+            id: 0,
+            key: props.layerKey,
+            value: props.value,
+            enteredAt: -Infinity,
+            leftAt: null,
+          },
+        ]
+  );
+  const [, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    setLayers((previous) => {
+      const now = performance.now();
+      const active = previous.find((layer) => layer.leftAt === null);
+      if (active && active.key === props.layerKey) {
+        return previous.map((layer) =>
+          layer === active ? { ...layer, value: props.value } : layer
+        );
+      }
+      const leaving = previous.map((layer) =>
+        layer.leftAt === null ? { ...layer, leftAt: now } : layer
+      );
+      if (props.layerKey === null) return leaving;
+      return [
+        ...leaving,
+        {
+          id: nextIdRef.current++,
+          key: props.layerKey,
+          value: props.value,
+          enteredAt: now,
+          leftAt: null,
+        },
+      ];
+    });
+    // seules les valeurs comptent, pas l'identité de l'objet
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.layerKey, props.valueSignature]);
+
+  const now = performance.now();
+  const isFading = layers.some((layer) => !isLayerSettled(layer, now));
+
+  // Pendant un fondu, on met à jour les opacités ~15 fois par seconde et on
+  // retire les couches qui ont fini de disparaître.
+  React.useEffect(() => {
+    if (!isFading) return;
+    const interval = window.setInterval(() => {
+      const current = performance.now();
+      setLayers((previous) => {
+        const kept = previous.filter(
+          (layer) =>
+            layer.leftAt === null || current - layer.leftAt < WEATHER_FADE_MS
+        );
+        return kept.length === previous.length ? previous : kept;
+      });
+      setTick((tick) => tick + 1);
+      requestMapRender();
+    }, 66);
+    return () => window.clearInterval(interval);
+  }, [isFading]);
+
+  return (
+    <>
+      {layers.map((layer) => {
+        const fade = layerFade(layer, now);
+        if (fade <= 0) return null;
+        return (
+          <React.Fragment key={layer.id}>
+            {props.render(layer.value, fade)}
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+};
+
+/** Le moment de la journée a-t-il un effet visible ? */
+export const hasTimeOfDayEffect = (settings: WeatherSettings): boolean =>
+  (settings.timeOfDay ?? "day") !== "day" || (settings.timeIntensity ?? 0) > 0;
+
+/**
+ * Le moment de la journée (matin, soleil, nuit) et la météo sont deux
+ * couches indépendantes, chacune avec son fondu : une nuit pluvieuse est
+ * une nuit plus une pluie.
  */
 export const WeatherSystem = React.memo(
   ({
@@ -1753,76 +1979,44 @@ export const WeatherSystem = React.memo(
     config: WeatherSettings;
     dimensions: WeatherDimensions;
   }) => {
-    const nextIdRef = React.useRef(1);
-    const [layers, setLayers] = React.useState<Array<WeatherLayer>>(() =>
-      config.type === "none"
-        ? []
-        : [{ id: 0, settings: config, enteredAt: -Infinity, leftAt: null }]
-    );
-    const [, setTick] = React.useState(0);
-
-    React.useEffect(() => {
-      setLayers((previous) => {
-        const now = performance.now();
-        const active = previous.find((layer) => layer.leftAt === null);
-        if (active && active.settings.type === config.type) {
-          return previous.map((layer) =>
-            layer === active ? { ...layer, settings: config } : layer
-          );
-        }
-        const leaving = previous.map((layer) =>
-          layer.leftAt === null ? { ...layer, leftAt: now } : layer
-        );
-        if (config.type === "none") return leaving;
-        return [
-          ...leaving,
-          {
-            id: nextIdRef.current++,
-            settings: config,
-            enteredAt: now,
-            leftAt: null,
-          },
-        ];
-      });
-      // seules les valeurs comptent, pas l'identité de l'objet
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [config.type, config.intensity, config.windAngle]);
-
-    const now = performance.now();
-    const isFading = layers.some((layer) => !isLayerSettled(layer, now));
-
-    // Pendant un fondu, on met à jour les opacités ~15 fois par seconde et on
-    // retire les couches qui ont fini de disparaître.
-    React.useEffect(() => {
-      if (!isFading) return;
-      const interval = window.setInterval(() => {
-        const current = performance.now();
-        setLayers((previous) => {
-          const kept = previous.filter(
-            (layer) =>
-              layer.leftAt === null || current - layer.leftAt < WEATHER_FADE_MS
-          );
-          return kept.length === previous.length ? previous : kept;
-        });
-        setTick((tick) => tick + 1);
-        requestMapRender();
-      }, 66);
-      return () => window.clearInterval(interval);
-    }, [isFading]);
+    const time: TimeSettings = {
+      timeOfDay: config.timeOfDay ?? "day",
+      timeIntensity: config.timeIntensity ?? 0,
+      lightAngle: config.lightAngle ?? -30,
+      fireflies: config.fireflies ?? 0.5,
+    };
+    // les anciennes valeurs « soleil » et « nuit » sont converties par le
+    // serveur ; par prudence on ne les affiche plus comme météo
+    const weatherKey =
+      config.type === "none" || config.type === "sun" || config.type === "moon"
+        ? null
+        : config.type;
 
     return (
       <>
-        {layers.map((layer) => {
-          const fade = layerFade(layer, now);
-          if (layer.settings.type === "none" || fade <= 0) return null;
-          return (
-            <WeatherSystemInner
-              key={layer.id}
-              config={{ ...layer.settings, fade }}
+        <CrossFade
+          layerKey={hasTimeOfDayEffect(config) ? time.timeOfDay : null}
+          value={time}
+          valueSignature={`${time.timeIntensity}|${time.lightAngle}|${time.fireflies}`}
+          render={(value, fade) => (
+            <TimeOfDayEffect
+              settings={value}
+              fade={fade}
               dimensions={dimensions}
             />
-          );
-        })}
+          )}
+        />
+        <CrossFade
+          layerKey={weatherKey}
+          value={config}
+          valueSignature={`${config.intensity}|${config.windAngle}`}
+          render={(value, fade) => (
+            <WeatherSystemInner
+              config={{ ...value, fade }}
+              dimensions={dimensions}
+            />
+          )}
+        />
       </>
     );
   }

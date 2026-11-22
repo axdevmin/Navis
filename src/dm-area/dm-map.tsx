@@ -111,6 +111,7 @@ import { dmMap_RollDiceMutation } from "./__generated__/dmMap_RollDiceMutation.g
 import {
   WeatherControls,
   WEATHER_OPTIONS,
+  TIME_OF_DAY_OPTIONS,
   MapUpdateWeatherMutation,
   getWeatherPatchForType,
 } from "./weather-controls";
@@ -614,6 +615,8 @@ const WeatherButtonMapFragment = graphql`
   fragment dmMap_WeatherButton_MapFragment on Map {
     weatherSettings {
       type
+      timeOfDay
+      timeIntensity
     }
     ...weatherControls_MapFragment
   }
@@ -628,12 +631,24 @@ const WeatherButton = (props: {
   useOnClickOutside(ref, () => setIsOpen(false));
 
   const weatherType = map.weatherSettings.type as WeatherType;
-  const WeatherIcon = WEATHER_ICONS[weatherType] ?? Icon.Cloud;
+  const { timeOfDay, timeIntensity } = map.weatherSettings;
+  const hasTimeEffect = timeOfDay !== "day" || timeIntensity > 0;
+  // l'icône montre la météo si elle existe, sinon le moment de la journée
+  const WeatherIcon =
+    weatherType !== "none"
+      ? WEATHER_ICONS[weatherType] ?? Icon.Cloud
+      : timeOfDay === "night"
+      ? Icon.Moon
+      : timeOfDay === "morning"
+      ? Icon.Sunrise
+      : hasTimeEffect
+      ? Icon.Sun
+      : Icon.Cloud;
 
   return (
     <Toolbar.Item
       isOpen={isOpen}
-      hasIndicator={weatherType !== "none"}
+      hasIndicator={weatherType !== "none" || hasTimeEffect}
       ref={ref}
     >
       <Toolbar.Button onClick={() => setIsOpen((v) => !v)}>
@@ -1155,6 +1170,7 @@ const DMMapFragment = graphql`
       type
       intensity
       windAngle
+      timeOfDay
     }
     combat {
       isActive
@@ -1850,6 +1866,32 @@ export const DmMap = (props: {
                 type: option.type,
                 intensity: weather.intensity,
                 windAngle: patch.windAngle ?? weather.windAngle,
+              },
+            },
+          },
+        });
+      },
+    })),
+    ...TIME_OF_DAY_OPTIONS.filter(
+      (option) => option.value !== map.weatherSettings.timeOfDay
+    ).map((option) => ({
+      id: `time:${option.value}`,
+      title: `Moment : ${option.label}`,
+      group: "Météo",
+      icon: <option.icon boxSize="16px" />,
+      keywords: "meteo heure matin jour journee nuit soleil",
+      run: () => {
+        const weather = map.weatherSettings;
+        updateWeather({
+          variables: {
+            input: {
+              mapId: map.id,
+              weatherSettings: {
+                type: weather.type as WeatherType,
+                intensity: weather.intensity,
+                windAngle: weather.windAngle,
+                timeOfDay: option.value,
+                timeIntensity: option.defaultIntensity,
               },
             },
           },

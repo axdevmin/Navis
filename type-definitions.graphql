@@ -425,6 +425,10 @@ type WeatherSettings {
   Les tokens passent par-dessus la météo.
   """
   tokensAboveWeather: Boolean!
+  timeOfDay: TimeOfDay!
+  timeIntensity: Float!
+  lightAngle: Float!
+  fireflies: Float!
 }
 
 """
@@ -441,6 +445,15 @@ enum WeatherType {
   cloudy
   fog
   bloodRain
+}
+
+"""
+Moment de la journée, indépendant de la météo.
+"""
+enum TimeOfDay {
+  morning
+  day
+  night
 }
 
 """
@@ -994,6 +1007,10 @@ input WeatherSettingsInput {
   intensity: Float!
   windAngle: Float!
   tokensAboveWeather: Boolean
+  timeOfDay: TimeOfDay
+  timeIntensity: Float
+  lightAngle: Float
+  fireflies: Float
 }
 
 type MapUpdateRoomsResult {
