@@ -58,7 +58,7 @@ const IconContainer = styled(animated.div)`
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 8px;
+  padding: 12px;
   pointer-events: none;
 `;
 

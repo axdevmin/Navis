@@ -1,4 +1,7 @@
 import * as React from "react";
+import styled from "@emotion/styled/macro";
+import { ConditionToggleGrid } from "./token-conditions";
+import { UpdateTokenContext } from "./update-token-context";
 import { undoHistory } from "./undo-history";
 import graphql from "babel-plugin-relay/macro";
 import { useFragment, useMutation } from "relay-hooks";
@@ -93,6 +96,7 @@ const MapFragment = graphql`
       tokenType
       isAlive
       imageUrl
+      conditions
       tokenImage {
         id
       }
@@ -123,6 +127,7 @@ export const ContextMenuRenderer = (props: {
             tokenType: (token.tokenType as any) ?? "marker",
             isAlive: token.isAlive ?? true,
             imageUrl: token.imageUrl ?? null,
+            conditions: [...token.conditions],
             reference: null,
           });
         }
@@ -149,6 +154,8 @@ export const ContextMenuRenderer = (props: {
     useMutation<mapContextMenuRendererUpdateManyMutation>(
       MapContextMenuRendererUpdateManyMutation
     );
+  // passe par l'historique : un état posé au clic droit s'annule avec ⌘Z
+  const updateToken = React.useContext(UpdateTokenContext);
   const [combatAddParticipant] =
     useMutation<mapContextMenuRendererCombatAddParticipantMutation>(
       MapContextMenuRendererCombatAddParticipantMutation
@@ -308,7 +315,7 @@ export const ContextMenuRenderer = (props: {
           borderColor="rgba(255,255,255,0.1)"
           boxShadow="0 4px 20px rgba(0,0,0,0.6)"
           py="4px"
-          minW="200px"
+          minW="276px"
         >
           {state.target?.type === "token" ? (
             (() => {
@@ -349,6 +356,17 @@ export const ContextMenuRenderer = (props: {
                       ? "Masquer les propriétés"
                       : "Afficher les propriétés"
                   )}
+                  {token ? (
+                    <ConditionMenuSection>
+                      <ConditionMenuTitle>États</ConditionMenuTitle>
+                      <ConditionToggleGrid
+                        value={token.conditions}
+                        onChange={(conditions) =>
+                          updateToken(token.id, { conditions })
+                        }
+                      />
+                    </ConditionMenuSection>
+                  ) : null}
                   {map.combat?.isActive &&
                     token &&
                     !combatTokenIds.has(token.id) &&
@@ -436,3 +454,13 @@ export const ContextMenuRenderer = (props: {
     </BoxLoose>
   );
 };
+
+const ConditionMenuSection = styled.div`
+  padding: 6px 12px 8px;
+`;
+
+const ConditionMenuTitle = styled.div`
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 6px;
+`;

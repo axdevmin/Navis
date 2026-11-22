@@ -14,6 +14,7 @@ import {
 import _sanitizeHtml from "sanitize-html";
 import { StyleSheet } from "@emotion/sheet";
 import { useStaticRef } from "../../hooks/use-static-ref";
+import { ds } from "../../design-system";
 import {
   parseTemplateAttributes,
   Attribute,
@@ -257,17 +258,42 @@ const HtmlContainerStyled = styled.div`
   flex-grow: 1;
   overflow-wrap: break-word;
   min-height: 100%;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.55;
+  color: ${ds.colors.textPrimary};
 
   > div > * {
+    margin-bottom: 8px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: ${ds.font.sans};
+    font-weight: 600;
+    line-height: 1.3;
+    margin-top: 14px;
     margin-bottom: 6px;
+  }
+  h1 {
+    font-size: 18px;
+  }
+  h2 {
+    font-size: 15px;
+  }
+  h3,
+  h4 {
+    font-size: 13px;
+  }
+  > div > :first-child {
+    margin-top: 0;
   }
 
   blockquote {
     padding: 0 1em;
-    background-color: rgba(0, 0, 0, 0.04);
-    border-left: 7px solid #bcccdc;
+    background-color: ${ds.colors.surfaceHover};
+    border-left: 3px solid ${ds.colors.borderStrong};
   }
 
   img {
@@ -275,8 +301,9 @@ const HtmlContainerStyled = styled.div`
   }
 
   a {
-    color: blue;
+    color: ${ds.colors.accent};
     text-decoration: underline;
+    text-underline-offset: 2px;
   }
 
   p {
@@ -287,10 +314,11 @@ const HtmlContainerStyled = styled.div`
 
   pre,
   code {
-    border: 0.5px solid lightgray;
-    border-radius: 2px;
-    padding: 4px;
-    background: #f8f8f8;
+    border: 1px solid ${ds.colors.border};
+    border-radius: ${ds.radii.sm};
+    padding: 2px 4px;
+    background: ${ds.colors.surfaceHover};
+    font-size: 12px;
   }
 
   table {
@@ -299,7 +327,7 @@ const HtmlContainerStyled = styled.div`
 
   td,
   th {
-    border: 1px solid #999;
+    border: 1px solid ${ds.colors.border};
     padding: 0.5rem;
     text-align: left;
   }

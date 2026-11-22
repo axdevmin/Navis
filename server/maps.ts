@@ -40,8 +40,23 @@ const prepareToken = (token: { [key: string]: unknown }) => {
   if ("imageUrl" in token === false) {
     token.imageUrl = null;
   }
+  token.conditions = sanitizeConditions(token.conditions) ?? [];
 
   return token;
+};
+
+/**
+ * États d'un token (empoisonné, en feu…) : de simples identifiants dont le
+ * catalogue vit côté interface. On n'accepte que des identifiants courts.
+ */
+const MAX_TOKEN_CONDITIONS = 16;
+export const sanitizeConditions = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const ids = value.filter(
+    (id): id is string =>
+      typeof id === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(id)
+  );
+  return Array.from(new Set(ids)).slice(0, MAX_TOKEN_CONDITIONS);
 };
 
 export type MapGridEntity = {
@@ -73,6 +88,7 @@ export type MapTokenEntity = {
   isAlive: boolean;
   tokenType: TokenType;
   imageUrl: string | null;
+  conditions: string[];
   reference: null | {
     type: "note";
     id: string;
@@ -638,6 +654,7 @@ export class Maps {
             tokenType: props.tokenType ?? "marker",
             isAlive: props.isAlive ?? true,
             imageUrl: props.imageUrl ?? null,
+            conditions: [],
           };
 
           newTokens.push(token);
@@ -676,6 +693,7 @@ export class Maps {
       tokenType,
       isAlive,
       imageUrl,
+      conditions,
     }: {
       type?: string;
       x?: number;
@@ -700,6 +718,7 @@ export class Maps {
       tokenType?: TokenType;
       isAlive?: boolean;
       imageUrl?: string | null;
+      conditions?: unknown;
     }
   ) {
     return await this._processTask<{ map: MapEntity; token: unknown }>(
@@ -774,6 +793,10 @@ export class Maps {
         }
         if (imageUrl !== undefined) {
           token.imageUrl = imageUrl;
+        }
+        const nextConditions = sanitizeConditions(conditions);
+        if (nextConditions !== undefined) {
+          token.conditions = nextConditions;
         }
 
         // Keep the linked combat participant in sync: visibility and

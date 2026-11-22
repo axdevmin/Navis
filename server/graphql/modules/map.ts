@@ -1076,6 +1076,12 @@ const GraphQLMapTokenType = t.objectType<MapTokenEntity>({
       resolve: (source) => source.isAlive ?? true,
     }),
     t.field({
+      name: "conditions",
+      description: "Identifiants des états posés sur le token.",
+      type: t.NonNull(t.List(t.NonNull(t.String))),
+      resolve: (source) => source.conditions ?? [],
+    }),
+    t.field({
       name: "imageUrl",
       type: t.String,
       resolve: (source) => source.imageUrl ?? null,

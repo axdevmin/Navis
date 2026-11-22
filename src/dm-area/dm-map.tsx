@@ -1448,6 +1448,8 @@ export const DmMap = (props: {
               ? "Déplacement du token"
               : keys.length === 1 && keys[0] === "radius"
               ? "Taille du token"
+              : keys.length === 1 && keys[0] === "conditions"
+              ? "États du token"
               : "Modification du token",
             mergeKey: `token:${id}:${keys.join(",")}`,
             undo: () => rawUpdateTokenRef.current(id, before),
@@ -1814,7 +1816,7 @@ export const DmMap = (props: {
       id: "fog:shroud",
       title: "Masquer toute la carte",
       group: "Brouillard",
-      icon: <Icon.Droplet fill="currentColor" boxSize="16px" />,
+      icon: <Icon.MapShroud boxSize="16px" />,
       keywords: "brouillard tout",
       run: () => askFillFog(FogMode.shroud),
     },
@@ -1822,7 +1824,7 @@ export const DmMap = (props: {
       id: "fog:clear",
       title: "Révéler toute la carte",
       group: "Brouillard",
-      icon: <Icon.Droplet boxSize="16px" />,
+      icon: <Icon.MapReveal boxSize="16px" />,
       keywords: "brouillard tout",
       run: () => askFillFog(FogMode.clear),
     },
@@ -2245,19 +2247,28 @@ export const DmMap = (props: {
                   </Toolbar.Button>
                 </Toolbar.Item>
               </Toolbar.Group>
-              <Toolbar.Group>
+              <Toolbar.Group divider>
                 <Toolbar.Item>
                   <Toolbar.Button onClick={() => askFillFog(FogMode.shroud)}>
-                    <Icon.Droplet fill="currentColor" boxSize="16px" />
+                    <Icon.MapShroud boxSize="16px" />
                     <Icon.Label>Tout masquer</Icon.Label>
                   </Toolbar.Button>
                 </Toolbar.Item>
                 <Toolbar.Item>
                   <Toolbar.Button onClick={() => askFillFog(FogMode.clear)}>
-                    <Icon.Droplet boxSize="16px" />
+                    <Icon.MapReveal boxSize="16px" />
                     <Icon.Label>Tout révéler</Icon.Label>
                   </Toolbar.Button>
                 </Toolbar.Item>
+              </Toolbar.Group>
+              <Toolbar.Group>
+                {/* réglage de préparation, rarement touché en partie */}
+                <GridSettingButton
+                  map={map}
+                  enterConfigureGridMode={() => {
+                    setToolOverride(ConfigureGridMapTool);
+                  }}
+                />
               </Toolbar.Group>
             </Toolbar>
           </LeftToolbarContainer>
@@ -2276,12 +2287,6 @@ export const DmMap = (props: {
                 </Toolbar.Item>
               </Toolbar.Group>
               <Toolbar.Group divider>
-                <GridSettingButton
-                  map={map}
-                  enterConfigureGridMode={() => {
-                    setToolOverride(ConfigureGridMapTool);
-                  }}
-                />
                 <WeatherButton map={map} />
                 <CombatButton
                   map={map}

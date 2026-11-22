@@ -5,6 +5,12 @@ import { ds } from "./design-system";
 import * as Icon from "./feather-icons";
 import { controlBase, floatingSurface, Kbd } from "./ui";
 import { TokenImageControl } from "./leva-plugin/leva-plugin-token-image";
+import {
+  ConditionToggleGrid,
+  parseConditions,
+  resolveConditions,
+  serializeConditions,
+} from "./token-conditions";
 
 /**
  * Inspecteur de token.
@@ -58,12 +64,20 @@ export const TokenInspector = (props: {
   onToggleCollapsed: () => void;
 }): React.ReactElement => {
   const { store } = props;
-  const data = store.useStore((state) => state.data) as AnyData;
+  // leva modifie `data` sur place : on s'abonne à l'état entier, dont la
+  // référence change à chaque écriture, pour voir aussi les changements venus
+  // d'ailleurs (annulation, autre écran, joueur).
+  const data = store.useStore((state) => state).data as AnyData;
 
   const has = (key: string) => key in data;
   const valueOf = (key: string) => data[key]?.value;
-  const set = (key: string, value: unknown) =>
-    store.setValueAtPath(key, value, true);
+  const set = (key: string, value: unknown) => {
+    try {
+      store.setValueAtPath(key, value, true);
+    } catch (error) {
+      // leva refuse une valeur identique à l'actuelle : rien à faire
+    }
+  };
   // Pendant une saisie, le token ignore les valeurs qui reviennent du serveur.
   const editProps = (key: string) => ({
     onFocus: () => store.emitOnEditStart(key),
@@ -187,6 +201,15 @@ export const TokenInspector = (props: {
               />
             ) : null}
           </Section>
+
+          {has("conditions") ? (
+            <Section>
+              <ConditionPicker
+                value={parseConditions(valueOf("conditions"))}
+                onChange={(ids) => set("conditions", serializeConditions(ids))}
+              />
+            </Section>
+          ) : null}
 
           <Section>
             {has("color") ? (
@@ -397,6 +420,41 @@ const NameInput = styled.input`
   background: transparent;
   font-size: 14px;
   font-weight: 600;
+`;
+
+/**
+ * États du token : une grille d'icônes à cocher. Un état actif prend sa
+ * couleur ; les noms des états actifs sont rappelés au-dessus.
+ */
+const ConditionPicker = (props: {
+  value: Array<string>;
+  onChange: (ids: Array<string>) => void;
+}): React.ReactElement => {
+  const activeConditions = resolveConditions(props.value);
+  return (
+    <>
+      <Row>
+        <RowLabel>États</RowLabel>
+        {activeConditions.length > 0 ? (
+          <ConditionSummary>
+            {activeConditions.map((c) => c.label).join(", ")}
+          </ConditionSummary>
+        ) : (
+          <ConditionSummary muted>Aucun</ConditionSummary>
+        )}
+      </Row>
+      <ConditionToggleGrid value={props.value} onChange={props.onChange} />
+    </>
+  );
+};
+
+const ConditionSummary = styled.span<{ muted?: boolean }>`
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: ${(p) => (p.muted ? ds.colors.textMuted : ds.colors.textPrimary)};
 `;
 
 const Section = styled.div`
