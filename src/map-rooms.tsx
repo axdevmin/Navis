@@ -12,6 +12,46 @@ export type MapRoom = {
   /** Sommets à plat : [x1, y1, x2, y2, …] en pixels de l'image. */
   points: ReadonlyArray<number>;
   hasWeather: boolean;
+  /** La pièce est éclairée de l'intérieur (visible la nuit). */
+  hasLight?: boolean;
+  /** Porte fermée : la vision des tokens n'entre pas dans la pièce. */
+  blocksVision?: boolean;
+};
+
+/**
+ * Masque de polygones (repère de la scène) pour un shader : blanc dedans,
+ * noir dehors, bords légèrement adoucis. `null` s'il n'y a rien.
+ */
+export const createPolygonMaskTexture = (
+  polygons: ReadonlyArray<ReadonlyArray<readonly [number, number]>>,
+  dimensions: { width: number; height: number },
+  softness = 4
+): THREE.CanvasTexture | null => {
+  if (polygons.length === 0) return null;
+  const width = 512;
+  const height = Math.max(
+    1,
+    Math.round((512 * dimensions.height) / dimensions.width)
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "#ffffff";
+  ctx.shadowBlur = softness;
+  for (const polygon of polygons) {
+    ctx.beginPath();
+    polygon.forEach(([x, y], index) => {
+      const cx = (x / dimensions.width + 0.5) * width;
+      const cy = (0.5 - y / dimensions.height) * height;
+      if (index === 0) ctx.moveTo(cx, cy);
+      else ctx.lineTo(cx, cy);
+    });
+    ctx.closePath();
+    ctx.fill();
+  }
+  return new THREE.CanvasTexture(canvas);
 };
 
 type Point = [number, number];
@@ -99,8 +139,20 @@ export const WeatherShelter = (props: {
 
   // Les matériaux de la météo sont créés au fil de l'eau (changement de
   // type, d'intensité…) : on les règle à chaque image, c'est quelques objets.
+  // Toute la météo est dessinée dans une même tranche, juste au-dessus des
+  // tokens et sous le brouillard de guerre : ses voiles (ordre 7) se
+  // mêlaient sinon aux tokens, dont le contour a le même ordre.
+  const weatherOrder = props.renderOrder + 0.5;
   useFrame(() => {
     weatherGroupRef.current?.traverse((object) => {
+      const data = object.userData as { baseRenderOrder?: number };
+      if (data.baseRenderOrder === undefined) {
+        data.baseRenderOrder = object.renderOrder;
+      }
+      const order = weatherOrder + data.baseRenderOrder / 100;
+      if (object.renderOrder !== order) {
+        object.renderOrder = order;
+      }
       const material = (object as THREE.Mesh).material as
         | THREE.Material
         | Array<THREE.Material>

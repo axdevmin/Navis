@@ -28,6 +28,7 @@ import { useStaticRef } from "./hooks/use-static-ref";
 import { buildUrl } from "./public-url";
 import { CanvasText, CanvasTextRef } from "./canvas-text";
 import {
+  LIGHT_BADGE,
   getConditionTexture,
   parseConditions,
   resolveConditions,
@@ -76,10 +77,28 @@ import { mapView_MapPingRenderer_MapFragment$key } from "./__generated__/mapView
 import { mapView_MapPingSubscription } from "./__generated__/mapView_MapPingSubscription.graphql";
 import { UpdateTokenContext } from "./update-token-context";
 import { IsDungeonMasterContext } from "./is-dungeon-master-context";
-import { WeatherSystem } from "./weather-system";
+import {
+  TimeOfDaySystem,
+  WeatherSystem,
+  hasTimeOfDayEffect,
+} from "./weather-system";
+import {
+  MapVision,
+  MapVisionContext,
+  MapLighting,
+  MapLightingContext,
+  SceneLight,
+  getLightSource,
+  liveLightPositions,
+} from "./light-sources";
 import { RenderDemand, RenderScheduler } from "./render-scheduler";
 import { tokenSnapshots } from "./undo-history";
-import { WeatherShelter } from "./map-rooms";
+import {
+  WeatherShelter,
+  createPolygonMaskTexture,
+  isPointInRoom,
+  roomVertices,
+} from "./map-rooms";
 import type { WeatherSettings } from "./weather-types";
 import { DiceRollRenderer } from "./dice-roll-renderer";
 
@@ -92,6 +111,7 @@ const TOKEN_TYPE_COLORS: Record<TokenType, string> = {
   object: "#ffaa33",
   hazard: "#ff6633",
   marker: "#aa44ff",
+  light: "#ffb347",
 };
 /** Épaisseur du contour, en fraction du rayon du token. */
 const TOKEN_OUTLINE_WIDTH = 0.12;
@@ -191,6 +211,12 @@ const Plane = React.forwardRef(
   }
 );
 
+/**
+ * Réglage de la carte (panneau Météo) : les tokens passent par-dessus la
+ * météo au lieu d'être voilés par elle.
+ */
+const TokensAboveWeatherContext = React.createContext(false);
+
 const SharedMapState = React.createContext<SharedMapToolState>(
   undefined as any
 );
@@ -258,6 +284,10 @@ const TokenRendererMapTokenFragment = graphql`
     isAlive
     imageUrl
     conditions
+    lightType
+    lightRadius
+    visionRadius
+    visionMemory
     tokenImage {
       id
       title
@@ -305,6 +335,10 @@ const TokenRenderer = (props: {
       tokenType: token.tokenType,
       isAlive: token.isAlive,
       conditions: [...token.conditions],
+      lightType: token.lightType ?? null,
+      lightRadius: token.lightRadius,
+      visionRadius: token.visionRadius,
+      visionMemory: token.visionMemory,
     });
   });
   React.useEffect(
@@ -551,6 +585,7 @@ const TokenRenderer = (props: {
           Objet: "object",
           Danger: "hazard",
           Marqueur: "marker",
+          Lumière: "light",
         },
         onChange: (tokenType: TokenType, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -569,6 +604,56 @@ const TokenRenderer = (props: {
             return;
           }
           updateToken(props.id, { isAlive });
+        },
+        transient: false,
+      },
+      // lumière portée : identifiant (voir light-sources), "" pour aucune
+      lightType: {
+        type: LevaInputs.STRING,
+        label: "Lumière",
+        value: token.lightType ?? "",
+        onChange: (value: string, _, { initial, fromPanel }) => {
+          if (initial || !fromPanel) {
+            return;
+          }
+          updateToken(props.id, { lightType: value === "" ? null : value });
+        },
+        transient: false,
+      },
+      lightRadius: {
+        type: LevaInputs.NUMBER,
+        label: "Portée",
+        value: token.lightRadius,
+        onChange: (lightRadius: number, _, { initial, fromPanel }) => {
+          if (initial || !fromPanel) {
+            return;
+          }
+          updateToken(props.id, { lightRadius });
+        },
+        transient: false,
+      },
+      // vision : le brouillard s'efface autour du token quand il avance
+      visionRadius: {
+        type: LevaInputs.NUMBER,
+        label: "Vision",
+        value: token.visionRadius,
+        onChange: (visionRadius: number, _, { initial, fromPanel }) => {
+          if (initial || !fromPanel) {
+            return;
+          }
+          updateToken(props.id, { visionRadius });
+        },
+        transient: false,
+      },
+      visionMemory: {
+        type: LevaInputs.BOOLEAN,
+        label: "Garder la zone révélée",
+        value: token.visionMemory,
+        onChange: (visionMemory: boolean, _, { initial, fromPanel }) => {
+          if (initial || !fromPanel) {
+            return;
+          }
+          updateToken(props.id, { visionMemory });
         },
         transient: false,
       },
@@ -624,6 +709,10 @@ const TokenRenderer = (props: {
       tokenType: token.tokenType ?? "marker",
       isAlive: token.isAlive ?? true,
       conditions: serializeConditions(token.conditions),
+      lightType: token.lightType ?? "",
+      lightRadius: token.lightRadius,
+      visionRadius: token.visionRadius,
+      visionMemory: token.visionMemory,
     };
 
     if (editingStateRef.radius === 0) {
@@ -655,6 +744,10 @@ const TokenRenderer = (props: {
     token.tokenType,
     token.isAlive,
     conditionsKey,
+    token.lightType,
+    token.lightRadius,
+    token.visionRadius,
+    token.visionMemory,
   ]);
 
   const initialRadius = useStaticRef(() =>
@@ -913,6 +1006,50 @@ const TokenRenderer = (props: {
   const deadOpacity = isAlive ? baseOpacity : baseOpacity * 0.4;
   const resolvedImageUrl = token.tokenImage?.url ?? token.imageUrl ?? null;
 
+  // Tokens au-dessus de la météo (réglage de la carte, panneau Météo) : on
+  // décale l'ordre de rendu de tout ce qui compose le token (disque, image,
+  // nom, pastilles) entre la météo et le brouillard.
+  // Les éléments apparaissent au fil des chargements, d'où un passage à
+  // chaque image ; ce sont quelques objets par token.
+  const layerRef = React.useRef<THREE.Group>(null);
+  const isAboveWeather = React.useContext(TokensAboveWeatherContext);
+  useFrame(() => {
+    layerRef.current?.traverse((object) => {
+      const data = object.userData as { baseRenderOrder?: number };
+      if (data.baseRenderOrder === undefined) {
+        data.baseRenderOrder = object.renderOrder;
+      }
+      // la météo occupe 8 à 8,1 (voir WeatherShelter), le brouillard 9
+      const target = isAboveWeather
+        ? LayerRenderOrder.weather + 0.2 + (data.baseRenderOrder + 1) / 20
+        : data.baseRenderOrder;
+      if (object.renderOrder !== target) {
+        object.renderOrder = target;
+      }
+    });
+  });
+
+  // Une lumière portée suit le token en direct pendant qu'on le déplace.
+  const carriesLight = token.lightType != null;
+  // une vision sans mémoire suit aussi le token en direct
+  const hasLiveVision = token.visionRadius > 0 && !token.visionMemory;
+  const tracksPosition = carriesLight || hasLiveVision;
+  useFrame(() => {
+    if (!tracksPosition) return;
+    const [x, y] = animatedProps.position.get() as [number, number, number];
+    liveLightPositions.set(props.id, [x, y]);
+  });
+  React.useEffect(() => {
+    if (!tracksPosition) liveLightPositions.delete(props.id);
+    return () => {
+      liveLightPositions.delete(props.id);
+    };
+  }, [tracksPosition, props.id]);
+
+  // Un token dans le cercle d'une vision sans mémoire est visible des
+  // joueurs, même là où le brouillard est fermé (sauf pièce fermée).
+  const vision = React.useContext(MapVisionContext);
+
   const isUnderFog = React.useMemo(() => {
     if (isDungeonMaster) return false;
     const fogCanvas = sharedMapState.fogCanvas;
@@ -923,8 +1060,17 @@ const TokenRenderer = (props: {
     if (fx < 0 || fx >= fogCanvas.width || fy < 0 || fy >= fogCanvas.height)
       return false;
     const alpha = ctx.getImageData(fx, fy, 1, 1).data[3];
-    return alpha > 128;
+    if (alpha <= 128) return false;
+    const isSeen = vision.imageVisions.some(
+      (circle) =>
+        Math.hypot(token.x - circle.x, token.y - circle.y) <= circle.radius
+    );
+    const isInClosedRoom = vision.closedRoomsImage.some((points) =>
+      isPointInRoom([token.x, token.y], points)
+    );
+    return !(isSeen && !isInClosedRoom);
   }, [
+    vision,
     isDungeonMaster,
     sharedMapState.fogCanvas,
     sharedMapState.fogVersion,
@@ -936,7 +1082,7 @@ const TokenRenderer = (props: {
   if (isUnderFog) return null;
 
   return (
-    <>
+    <group ref={layerRef}>
       <animated.group
         position={animatedProps.position}
         scale={animatedProps.circleScale}
@@ -1093,6 +1239,8 @@ const TokenRenderer = (props: {
         ) : null}
         <TokenConditionBadges
           conditions={token.conditions}
+          // un token « Lumière » est lui-même la lumière : pas de pastille
+          carriesLight={carriesLight && token.tokenType !== "light"}
           initialRadius={initialRadius}
         />
       </animated.group>
@@ -1112,7 +1260,7 @@ const TokenRenderer = (props: {
           />
         </animated.group>
       ) : null}
-    </>
+    </group>
   );
 };
 
@@ -1221,9 +1369,13 @@ const CONDITION_BADGE_ANGLES = [105, 150, 195, 240, 345, 300];
  */
 const TokenConditionBadges = (props: {
   conditions: ReadonlyArray<string>;
+  carriesLight: boolean;
   initialRadius: number;
 }) => {
-  const conditions = resolveConditions(props.conditions);
+  const conditions = [
+    ...(props.carriesLight ? [LIGHT_BADGE] : []),
+    ...resolveConditions(props.conditions),
+  ];
   if (conditions.length === 0) return null;
 
   const visible = conditions.slice(0, CONDITION_BADGE_ANGLES.length);
@@ -1728,6 +1880,33 @@ void main() {
 }
 `;
 
+/**
+ * Visions sans mémoire : le brouillard s'ouvre dans ces cercles, sauf dans
+ * les pièces fermées. Commun aux deux shaders du brouillard.
+ */
+const MAX_VISIONS = 16;
+const fogVisionGlsl = `
+#define MAX_VISIONS ${MAX_VISIONS}
+uniform vec2 uSize;
+uniform int uVisionCount;
+uniform vec3 uVisions[MAX_VISIONS];
+uniform sampler2D uClosedMask;
+uniform float uHasClosed;
+
+float visionReveal(vec2 uv) {
+  if (uVisionCount == 0) return 0.0;
+  vec2 p = (uv - 0.5) * uSize;
+  float seen = 0.0;
+  for (int i = 0; i < MAX_VISIONS; i++) {
+    if (i >= uVisionCount) break;
+    vec3 v = uVisions[i];
+    float d = distance(p, v.xy) / max(v.z, 0.0001);
+    seen = max(seen, 1.0 - smoothstep(0.85, 1.0, d));
+  }
+  return seen * (1.0 - texture2D(uClosedMask, uv).r * uHasClosed);
+}
+`;
+
 const fogSharedGlsl = `
 vec2 hash2(vec2 p) {
   p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -1768,6 +1947,7 @@ uniform float uOpacity;
 varying vec2 vUv;
 
 ${fogSharedGlsl}
+${fogVisionGlsl}
 
 void main() {
   float t = uTime * 0.08;
@@ -1780,7 +1960,7 @@ void main() {
   float fogMask = texture2D(uFogTexture, clamp(vUv + edgeWarp, 0.001, 0.999)).a;
 
   // Soft gradient at boundaries instead of a hard cutoff
-  float softEdge = smoothstep(0.04, 0.38, fogMask);
+  float softEdge = smoothstep(0.04, 0.38, fogMask) * (1.0 - visionReveal(vUv));
   if (softEdge < 0.004) discard;
 
   // Domain-warped smoke texture for the fog interior
@@ -1800,13 +1980,67 @@ uniform sampler2D uFogTexture;
 uniform float uOpacity;
 varying vec2 vUv;
 
+${fogVisionGlsl}
+
 void main() {
   float fogMask = texture2D(uFogTexture, vUv).a;
-  float softEdge = smoothstep(0.02, 0.12, fogMask);
+  float softEdge = smoothstep(0.02, 0.12, fogMask) * (1.0 - visionReveal(vUv));
   if (softEdge < 0.004) discard;
   gl_FragColor = vec4(0.08, 0.08, 0.12, softEdge * uOpacity);
 }
 `;
+
+const emptyVisionMask = (() => {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  return new THREE.CanvasTexture(canvas);
+})();
+
+const createVisionUniforms = () => ({
+  uSize: { value: new THREE.Vector2(1, 1) },
+  uVisionCount: { value: 0 },
+  uVisions: {
+    value: Array.from({ length: MAX_VISIONS }, () => new THREE.Vector3()),
+  },
+  uClosedMask: { value: emptyVisionMask },
+  uHasClosed: { value: 0 },
+});
+
+/** Met à jour les cercles de vision du brouillard (positions en direct). */
+const useVisionUniforms = (
+  material: THREE.ShaderMaterial,
+  width: number,
+  height: number
+) => {
+  const vision = React.useContext(MapVisionContext);
+  const closedSignature = vision.closedRooms
+    .map((room) => room.join(","))
+    .join("|");
+  const closedMask = React.useMemo(
+    () => createPolygonMaskTexture(vision.closedRooms, { width, height }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [closedSignature, width, height]
+  );
+  useFrame(() => {
+    const uniforms = material.uniforms;
+    uniforms.uSize.value.set(width, height);
+    const count = Math.min(vision.visions.length, MAX_VISIONS);
+    uniforms.uVisionCount.value = count;
+    for (let i = 0; i < count; i++) {
+      const item = vision.visions[i];
+      const live = liveLightPositions.get(item.id);
+      uniforms.uVisions.value[i].set(
+        live ? live[0] : item.x,
+        live ? live[1] : item.y,
+        item.radius
+      );
+    }
+    uniforms.uClosedMask.value = closedMask ?? emptyVisionMask;
+    uniforms.uHasClosed.value = closedMask ? 1 : 0;
+  });
+};
 
 const FogAnimatedRenderer = (props: {
   width: number;
@@ -1821,6 +2055,7 @@ const FogAnimatedRenderer = (props: {
           uFogTexture: { value: props.fogTexture },
           uTime: { value: 0 },
           uOpacity: { value: props.fogOpacity },
+          ...createVisionUniforms(),
         },
         vertexShader: fogVertexShader,
         fragmentShader: fogFragmentShader,
@@ -1832,19 +2067,24 @@ const FogAnimatedRenderer = (props: {
     material.uniforms.uFogTexture.value = props.fogTexture;
   }, [material, props.fogTexture]);
 
+  useVisionUniforms(material, props.width, props.height);
   useFrame(({ clock }) => {
     material.uniforms.uTime.value = clock.getElapsedTime();
     material.uniforms.uOpacity.value = props.fogOpacity;
   });
 
   return (
-    <mesh renderOrder={LayerRenderOrder.fog}>
-      <planeBufferGeometry
-        attach="geometry"
-        args={[props.width, props.height]}
-      />
-      <primitive object={material} attach="material" />
-    </mesh>
+    // Le groupe porte l'ordre : three trie d'abord par groupe parent, et le
+    // brouillard doit passer après la météo et les tokens.
+    <group renderOrder={LayerRenderOrder.fog}>
+      <mesh renderOrder={LayerRenderOrder.fog}>
+        <planeBufferGeometry
+          attach="geometry"
+          args={[props.width, props.height]}
+        />
+        <primitive object={material} attach="material" />
+      </mesh>
+    </group>
   );
 };
 
@@ -1860,6 +2100,7 @@ const FogDMRenderer = (props: {
         uniforms: {
           uFogTexture: { value: props.fogTexture },
           uOpacity: { value: props.fogOpacity },
+          ...createVisionUniforms(),
         },
         vertexShader: fogVertexShader,
         fragmentShader: fogDMFragmentShader,
@@ -1871,18 +2112,23 @@ const FogDMRenderer = (props: {
     material.uniforms.uFogTexture.value = props.fogTexture;
   }, [material, props.fogTexture]);
 
+  useVisionUniforms(material, props.width, props.height);
   useFrame(() => {
     material.uniforms.uOpacity.value = props.fogOpacity;
   });
 
   return (
-    <mesh renderOrder={LayerRenderOrder.fog}>
-      <planeBufferGeometry
-        attach="geometry"
-        args={[props.width, props.height]}
-      />
-      <primitive object={material} attach="material" />
-    </mesh>
+    // Le groupe porte l'ordre : three trie d'abord par groupe parent, et le
+    // brouillard doit passer après la météo et les tokens.
+    <group renderOrder={LayerRenderOrder.fog}>
+      <mesh renderOrder={LayerRenderOrder.fog}>
+        <planeBufferGeometry
+          attach="geometry"
+          args={[props.width, props.height]}
+        />
+        <primitive object={material} attach="material" />
+      </mesh>
+    </group>
   );
 };
 
@@ -1976,6 +2222,26 @@ const MapViewRendererFragment = graphql`
       id
       points
       hasWeather
+      hasLight
+      blocksVision
+    }
+    visions {
+      id
+      tokenId
+      x
+      y
+      radius
+    }
+    lights {
+      id
+      tokenId
+      x
+      y
+      lightType
+      radius
+    }
+    grid {
+      columnWidth
     }
     ...mapView_MapRendererFragment
   }
@@ -2360,54 +2626,147 @@ const MapViewRenderer = (props: {
     },
   });
 
+  // Lumières dans le repère de la scène (portée : cases de la grille).
+  const cellSize = map.grid?.columnWidth ?? 50;
+  const lightsSignature = map.lights
+    .map((l) => `${l.id}:${l.x}:${l.y}:${l.lightType}:${l.radius}`)
+    .join("|");
+  const litRoomsSignature = map.rooms
+    .filter((room) => room.hasLight)
+    .map((room) => room.id + room.points.join(","))
+    .join("|");
+  const lighting = React.useMemo<MapLighting>(() => {
+    const helper = toolContext.helper;
+    const lights: Array<SceneLight> = [];
+    for (const light of map.lights) {
+      const source = getLightSource(light.lightType);
+      if (!source) continue;
+      const [x, y] = helper.imageCoordinatesToThreePoint([light.x, light.y]);
+      lights.push({
+        // les positions en direct sont rangées par token
+        id: light.tokenId,
+        x,
+        y,
+        radius: helper.size.fromImageToThree(light.radius * cellSize),
+        source,
+      });
+    }
+    const litRooms = map.rooms
+      .filter((room) => room.hasLight)
+      .map((room) =>
+        roomVertices(room.points).map((vertex) =>
+          helper.imageCoordinatesToThreePoint(vertex)
+        )
+      );
+    return { lights, litRooms };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolContext, lightsSignature, litRoomsSignature, cellSize]);
+
+  // Visions sans mémoire et pièces fermées, pour le brouillard.
+  const visionsSignature = map.visions
+    .map((v) => `${v.tokenId}:${v.x}:${v.y}:${v.radius}`)
+    .join("|");
+  const closedRoomsSignature = map.rooms
+    .filter((room) => room.blocksVision)
+    .map((room) => room.id + room.points.join(","))
+    .join("|");
+  const visionState = React.useMemo<MapVision>(() => {
+    const helper = toolContext.helper;
+    const closedRoomsImage = map.rooms
+      .filter((room) => room.blocksVision)
+      .map((room) => room.points);
+    return {
+      visions: map.visions.map((v) => {
+        const [x, y] = helper.imageCoordinatesToThreePoint([v.x, v.y]);
+        return {
+          id: v.tokenId,
+          x,
+          y,
+          radius: helper.size.fromImageToThree(v.radius * cellSize),
+        };
+      }),
+      imageVisions: map.visions.map((v) => ({
+        x: v.x,
+        y: v.y,
+        radius: v.radius * cellSize,
+      })),
+      closedRooms: closedRoomsImage.map((points) =>
+        roomVertices(points).map((vertex) =>
+          helper.imageCoordinatesToThreePoint(vertex)
+        )
+      ),
+      closedRoomsImage,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolContext, visionsSignature, closedRoomsSignature, cellSize]);
+
   return (
     <SharedMapState.Provider value={toolContext}>
-      <Plane
-        position={spring.position}
-        scale={spring.scale}
-        transparentBackground={map.mediaType === "video_url"}
-        {...bind()}
-        ref={planeRef}
-      >
-        <MapRenderer
-          map={map}
-          mapTexture={activeMapTexture}
-          imageNaturalWidth={mediaNaturalWidth}
-          imageNaturalHeight={mediaNaturalHeight}
-          fogTexture={fogTexture}
-          viewport={viewport}
-          markerRadius={20}
-          scale={spring.scale}
-          dimensions={dimensions}
-          factor={
-            dimensions.width / mediaNaturalWidth / optimalDimensions.ratio
-          }
-          fogOpacity={props.fogOpacity}
-          hideMapMesh={map.mediaType === "video_url"}
-        />
-        {props.activeTool ? (
-          <MapToolRenderer
-            key={props.activeTool.id}
-            tool={props.activeTool}
-            toolRef={toolRef}
-            handlerContext={toolContext}
-          />
-        ) : null}
-        <WeatherShelter
-          rooms={map.rooms}
-          toScene={toolContext.helper.imageCoordinatesToThreePoint}
-          renderOrder={LayerRenderOrder.weather - 0.5}
+      <MapVisionContext.Provider value={visionState}>
+        <TokensAboveWeatherContext.Provider
+          value={props.weatherConfig.tokensAboveWeather === true}
         >
-          <WeatherSystem
-            config={props.weatherConfig}
-            dimensions={{
-              width: dimensions.width,
-              height: dimensions.height,
-            }}
-          />
-        </WeatherShelter>
-      </Plane>
-      <DiceRollRenderer mapId={props.mapId} />
+          <Plane
+            position={spring.position}
+            scale={spring.scale}
+            transparentBackground={map.mediaType === "video_url"}
+            {...bind()}
+            ref={planeRef}
+          >
+            <MapRenderer
+              map={map}
+              mapTexture={activeMapTexture}
+              imageNaturalWidth={mediaNaturalWidth}
+              imageNaturalHeight={mediaNaturalHeight}
+              fogTexture={fogTexture}
+              viewport={viewport}
+              markerRadius={20}
+              scale={spring.scale}
+              dimensions={dimensions}
+              factor={
+                dimensions.width / mediaNaturalWidth / optimalDimensions.ratio
+              }
+              fogOpacity={props.fogOpacity}
+              hideMapMesh={map.mediaType === "video_url"}
+            />
+            {props.activeTool ? (
+              <MapToolRenderer
+                key={props.activeTool.id}
+                tool={props.activeTool}
+                toolRef={toolRef}
+                handlerContext={toolContext}
+              />
+            ) : null}
+            <MapLightingContext.Provider value={lighting}>
+              {/* le moment de la journée n'est pas coupé par les pièces
+                abritées : la nuit tombe aussi à l'intérieur */}
+              <group renderOrder={LayerRenderOrder.weather}>
+                <TimeOfDaySystem
+                  config={props.weatherConfig}
+                  dimensions={{
+                    width: dimensions.width,
+                    height: dimensions.height,
+                  }}
+                />
+              </group>
+              <WeatherShelter
+                rooms={map.rooms}
+                toScene={toolContext.helper.imageCoordinatesToThreePoint}
+                renderOrder={LayerRenderOrder.weather - 0.5}
+              >
+                <WeatherSystem
+                  config={props.weatherConfig}
+                  dimensions={{
+                    width: dimensions.width,
+                    height: dimensions.height,
+                  }}
+                />
+              </WeatherShelter>
+            </MapLightingContext.Provider>
+          </Plane>
+          <DiceRollRenderer mapId={props.mapId} />
+        </TokensAboveWeatherContext.Provider>
+      </MapVisionContext.Provider>
     </SharedMapState.Provider>
   );
 };
@@ -2484,6 +2843,14 @@ const MapFragment = graphql`
       type
       intensity
       windAngle
+      tokensAboveWeather
+      timeOfDay
+      timeIntensity
+      lightAngle
+      fireflies
+    }
+    lights {
+      id
     }
     ...mapView_MapViewRendererFragment
   }
@@ -2630,10 +2997,15 @@ export const MapView = (props: {
     : null;
 
   // Ce que la scène exige quand personne n'y touche (voir RenderScheduler).
-  const weatherType =
-    (map.weatherSettings as WeatherSettings | null)?.type ?? "none";
+  const weatherSettings = map.weatherSettings as WeatherSettings | null;
+  const weatherType = weatherSettings?.type ?? "none";
+  const isWeatherAnimated =
+    weatherType !== "none" ||
+    (weatherSettings !== null && hasTimeOfDayEffect(weatherSettings)) ||
+    // les flammes vacillent
+    map.lights.length > 0;
   const renderDemand: RenderDemand =
-    weatherType !== "none" || (isAnimatedMedia && isAnimating)
+    isWeatherAnimated || (isAnimatedMedia && isAnimating)
       ? "continuous"
       : isDungeonMaster
       ? // le brouillard du MJ est statique : rien à redessiner au repos

@@ -41,6 +41,12 @@ const prepareToken = (token: { [key: string]: unknown }) => {
     token.imageUrl = null;
   }
   token.conditions = sanitizeConditions(token.conditions) ?? [];
+  token.lightType = sanitizeLightType(token.lightType);
+  token.lightRadius = sanitizeLightRadius(token.lightRadius) ?? 4;
+  token.visionRadius = sanitizeVisionRadius(token.visionRadius) ?? 0;
+  if (typeof token.visionMemory !== "boolean") {
+    token.visionMemory = true;
+  }
 
   return token;
 };
@@ -72,7 +78,38 @@ export type TokenType =
   | "creature"
   | "object"
   | "hazard"
-  | "marker";
+  | "marker"
+  /** Source de lumière seule (cheminée, feu…) : invisible des joueurs. */
+  | "light";
+
+/** Sources de lumière connues ; le rendu (couleur, vacillement) est côté interface. */
+export const LIGHT_TYPES = [
+  "torch",
+  "candle",
+  "campfire",
+  "fireplace",
+  "lantern",
+  "magic",
+] as const;
+export type LightType = typeof LIGHT_TYPES[number];
+
+export const sanitizeLightType = (value: unknown): LightType | null =>
+  typeof value === "string" &&
+  (LIGHT_TYPES as readonly string[]).includes(value)
+    ? (value as LightType)
+    : null;
+
+/** Portée de vision (révèle le brouillard en avançant), en cases ; 0 : aucune. */
+export const sanitizeVisionRadius = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.min(30, Math.max(0, value))
+    : undefined;
+
+/** Portée d'une lumière, en cases de grille. */
+export const sanitizeLightRadius = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.min(30, Math.max(0.5, value))
+    : undefined;
 
 export type MapTokenEntity = {
   id: string;
@@ -89,6 +126,17 @@ export type MapTokenEntity = {
   tokenType: TokenType;
   imageUrl: string | null;
   conditions: string[];
+  /** Lumière portée par le token (null : aucune). */
+  lightType: LightType | null;
+  /** Portée de la lumière, en cases. */
+  lightRadius: number;
+  /** Vision : le brouillard s'efface autour du token quand il avance (cases, 0 : aucune). */
+  visionRadius: number;
+  /**
+   * true : ce que voit le token reste révélé. false : seul le cercle autour
+   * de lui est visible, le brouillard se referme derrière.
+   */
+  visionMemory: boolean;
   reference: null | {
     type: "note";
     id: string;
@@ -144,12 +192,81 @@ export type WeatherType =
   | "sun"
   | "moon"
   | "wind"
-  | "cloudy";
+  | "cloudy"
+  | "fog"
+  | "bloodRain";
+
+/** "indoor" : donjon, grotte, bâtiment — obscurité neutre, sans ciel. */
+export type TimeOfDay = "morning" | "day" | "night" | "indoor";
 
 export type WeatherSettings = {
+  /**
+   * Précipitations et ciel. "sun" et "moon" sont d'anciennes valeurs, devenues
+   * des moments de la journée (voir normalizeWeatherSettings).
+   */
   type: WeatherType;
   intensity: number;
   windAngle: number;
+  /** Les tokens passent par-dessus la météo au lieu d'être voilés par elle. */
+  tokensAboveWeather?: boolean;
+  /** Moment de la journée, indépendant de la météo (nuit + pluie…). */
+  timeOfDay?: TimeOfDay;
+  /** Force de l'effet du moment : lumière du matin, soleil, obscurité. */
+  timeIntensity?: number;
+  /** Direction de la lumière, de −60° (gauche) à 60° (droite). */
+  lightAngle?: number;
+  /** Lucioles la nuit, de 0 à 1. */
+  fireflies?: number;
+};
+
+const clampNumber = (
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number
+) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
+
+/**
+ * Réglages complets et cohérents. Les anciennes météos « Soleil » et « Nuit »
+ * deviennent le moment de la journée correspondant, avec les mêmes réglages.
+ */
+export const normalizeWeatherSettings = (
+  raw: Partial<WeatherSettings> | null | undefined
+): WeatherSettings => {
+  const base = { ...DEFAULT_WEATHER, ...(raw ?? {}) };
+  const settings: WeatherSettings = {
+    type: base.type,
+    intensity: clampNumber(base.intensity, 0, 1, DEFAULT_WEATHER.intensity),
+    windAngle: clampNumber(base.windAngle, -60, 60, 0),
+    tokensAboveWeather: base.tokensAboveWeather === true,
+    timeOfDay:
+      base.timeOfDay === "morning" ||
+      base.timeOfDay === "night" ||
+      base.timeOfDay === "indoor"
+        ? base.timeOfDay
+        : "day",
+    timeIntensity: clampNumber(base.timeIntensity, 0, 1, 0),
+    lightAngle: clampNumber(base.lightAngle, -60, 60, -30),
+    fireflies: clampNumber(base.fireflies, 0, 1, 0.5),
+  };
+  if (base.type === "sun") {
+    settings.type = "none";
+    settings.timeOfDay = "day";
+    settings.timeIntensity = settings.intensity;
+    settings.lightAngle = clampNumber(base.windAngle, -60, 60, -30);
+    settings.windAngle = 0;
+  } else if (base.type === "moon") {
+    settings.type = "none";
+    settings.timeOfDay = "night";
+    settings.timeIntensity = settings.intensity;
+    // l'ancien second curseur de la nuit réglait les effets (0 à 1)
+    settings.fireflies = clampNumber(base.windAngle, 0, 1, 0.5);
+    settings.windAngle = 0;
+  }
+  return settings;
 };
 
 /**
@@ -163,6 +280,13 @@ export type MapRoom = {
   points: Array<number>;
   /** false : la météo ne s'affiche pas dans cette pièce (intérieur). */
   hasWeather: boolean;
+  /** true : la pièce est éclairée de l'intérieur (visible la nuit). */
+  hasLight?: boolean;
+  /**
+   * true : porte fermée, la vision des tokens n'entre pas dans la pièce tant
+   * que le MJ ne l'ouvre pas.
+   */
+  blocksVision?: boolean;
 };
 
 const prepareRooms = (rawRooms: unknown): Array<MapRoom> =>
@@ -368,8 +492,10 @@ export class Maps {
             : "image",
         weatherSettings:
           "weatherSettings" in rawMap && rawMap.weatherSettings
-            ? (rawMap.weatherSettings as WeatherSettings)
-            : { ...DEFAULT_WEATHER },
+            ? normalizeWeatherSettings(
+                rawMap.weatherSettings as Partial<WeatherSettings>
+              )
+            : normalizeWeatherSettings(null),
         rooms: prepareRooms("rooms" in rawMap ? rawMap.rooms : null),
         combat: prepareCombat(
           "combat" in rawMap
@@ -626,6 +752,8 @@ export class Maps {
       tokenType?: TokenType | null;
       isAlive?: boolean | null;
       imageUrl?: string | null;
+      lightType?: string | null;
+      lightRadius?: number | null;
     }>
   ) {
     return await this._processTask<{ tokens: Array<any> }>(
@@ -655,6 +783,10 @@ export class Maps {
             isAlive: props.isAlive ?? true,
             imageUrl: props.imageUrl ?? null,
             conditions: [],
+            lightType: sanitizeLightType(props.lightType),
+            lightRadius: sanitizeLightRadius(props.lightRadius) ?? 4,
+            visionRadius: 0,
+            visionMemory: true,
           };
 
           newTokens.push(token);
@@ -694,6 +826,10 @@ export class Maps {
       isAlive,
       imageUrl,
       conditions,
+      lightType,
+      lightRadius,
+      visionRadius,
+      visionMemory,
     }: {
       type?: string;
       x?: number;
@@ -719,6 +855,10 @@ export class Maps {
       isAlive?: boolean;
       imageUrl?: string | null;
       conditions?: unknown;
+      lightType?: unknown;
+      lightRadius?: unknown;
+      visionRadius?: unknown;
+      visionMemory?: unknown;
     }
   ) {
     return await this._processTask<{ map: MapEntity; token: unknown }>(
@@ -797,6 +937,20 @@ export class Maps {
         const nextConditions = sanitizeConditions(conditions);
         if (nextConditions !== undefined) {
           token.conditions = nextConditions;
+        }
+        if (lightType !== undefined) {
+          token.lightType = sanitizeLightType(lightType);
+        }
+        const nextLightRadius = sanitizeLightRadius(lightRadius);
+        if (nextLightRadius !== undefined) {
+          token.lightRadius = nextLightRadius;
+        }
+        const nextVisionRadius = sanitizeVisionRadius(visionRadius);
+        if (nextVisionRadius !== undefined) {
+          token.visionRadius = nextVisionRadius;
+        }
+        if (typeof visionMemory === "boolean") {
+          token.visionMemory = visionMemory;
         }
 
         // Keep the linked combat participant in sync: visibility and

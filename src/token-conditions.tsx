@@ -164,6 +164,17 @@ export const TOKEN_CONDITIONS: Array<TokenCondition> = [
 
 const CONDITIONS_BY_ID = new Map(TOKEN_CONDITIONS.map((c) => [c.id, c]));
 
+/**
+ * Pastille « porte une lumière » : la flamme des états, en couleur de
+ * lumière. Ce n'est pas un état, elle suit le réglage Lumière du token.
+ */
+export const LIGHT_BADGE: TokenCondition = {
+  id: "light",
+  label: "Porte une lumière",
+  color: "#ffc061",
+  paths: CONDITIONS_BY_ID.get("burning")!.paths,
+};
+
 /** États connus, dans l'ordre du catalogue, sans doublon. */
 export const resolveConditions = (
   ids: ReadonlyArray<string> | null | undefined

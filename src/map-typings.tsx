@@ -3,7 +3,9 @@ export type TokenType =
   | "creature"
   | "object"
   | "hazard"
-  | "marker";
+  | "marker"
+  /** Source de lumière seule (cheminée, feu…) : invisible des joueurs. */
+  | "light";
 
 export type CombatFaction = "hero" | "enemy" | "neutral";
 
@@ -31,6 +33,14 @@ export type MapTokenEntity = {
   imageUrl: string | null;
   /** Identifiants des états (empoisonné, en feu…), voir token-conditions. */
   conditions?: Array<string>;
+  /** Lumière portée (voir light-sources), null : aucune. */
+  lightType?: string | null;
+  /** Portée de la lumière, en cases. */
+  lightRadius?: number;
+  /** Vision : le brouillard s'efface autour du token quand il avance (cases). */
+  visionRadius?: number;
+  /** false : le brouillard se referme derrière le token. */
+  visionMemory?: boolean;
   reference: null | {
     type: "note";
     id: string;

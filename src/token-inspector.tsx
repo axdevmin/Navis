@@ -5,6 +5,7 @@ import { ds } from "./design-system";
 import * as Icon from "./feather-icons";
 import { controlBase, floatingSurface, Kbd } from "./ui";
 import { TokenImageControl } from "./leva-plugin/leva-plugin-token-image";
+import { LIGHT_SOURCES, getLightSource } from "./light-sources";
 import {
   ConditionToggleGrid,
   parseConditions,
@@ -29,6 +30,7 @@ const TOKEN_TYPES: ReadonlyArray<{ value: string; label: string }> = [
   { value: "creature", label: "Créature" },
   { value: "object", label: "Objet" },
   { value: "hazard", label: "Danger" },
+  { value: "light", label: "Lumière" },
   { value: "marker", label: "Marqueur" },
 ];
 
@@ -202,6 +204,87 @@ export const TokenInspector = (props: {
             ) : null}
           </Section>
 
+          {has("lightType") ? (
+            <Section>
+              <Row>
+                <RowLabel>Lumière</RowLabel>
+                <Select
+                  aria-label="Lumière portée"
+                  value={String(valueOf("lightType") ?? "")}
+                  onChange={(ev) => {
+                    const source = getLightSource(ev.target.value);
+                    set("lightType", ev.target.value);
+                    // chaque type a sa portée habituelle
+                    if (source) set("lightRadius", source.defaultRadius);
+                  }}
+                >
+                  <option value="">Aucune</option>
+                  {LIGHT_SOURCES.map((source) => (
+                    <option key={source.id} value={source.id}>
+                      {source.label}
+                    </option>
+                  ))}
+                </Select>
+              </Row>
+              {valueOf("lightType") ? (
+                <Row>
+                  <RowLabel>Portée</RowLabel>
+                  <RangeInput
+                    type="range"
+                    aria-label="Portée de la lumière"
+                    min={1}
+                    max={15}
+                    step={0.5}
+                    value={Number(valueOf("lightRadius") ?? 4)}
+                    onChange={(ev) =>
+                      set("lightRadius", parseFloat(ev.target.value))
+                    }
+                  />
+                  <ValueHint>
+                    {Number(valueOf("lightRadius") ?? 4)} case
+                    {Number(valueOf("lightRadius") ?? 4) > 1 ? "s" : ""}
+                  </ValueHint>
+                </Row>
+              ) : null}
+            </Section>
+          ) : null}
+
+          {has("visionRadius") ? (
+            <Section>
+              <Row>
+                <RowLabel title="Le brouillard de guerre s'efface autour du token quand il avance, et reste révélé.">
+                  Vision
+                </RowLabel>
+                <RangeInput
+                  type="range"
+                  aria-label="Portée de vision"
+                  min={0}
+                  max={12}
+                  step={0.5}
+                  value={Number(valueOf("visionRadius") ?? 0)}
+                  onChange={(ev) =>
+                    set("visionRadius", parseFloat(ev.target.value))
+                  }
+                />
+                <ValueHint>
+                  {Number(valueOf("visionRadius") ?? 0) === 0
+                    ? "Aucune"
+                    : `${Number(valueOf("visionRadius"))} case${
+                        Number(valueOf("visionRadius")) > 1 ? "s" : ""
+                      }`}
+                </ValueHint>
+              </Row>
+              {has("visionMemory") &&
+              Number(valueOf("visionRadius") ?? 0) > 0 ? (
+                <ToggleRow
+                  label="Garder la zone révélée"
+                  checked={valueOf("visionMemory") !== false}
+                  onChange={(checked) => set("visionMemory", checked)}
+                />
+              ) : null}
+            </Section>
+          ) : null}
+
           {has("conditions") ? (
             <Section>
               <ConditionPicker
@@ -331,7 +414,8 @@ export const TokenInspector = (props: {
   );
 };
 
-const ToggleRow = (props: {
+/** Ligne « libellé + interrupteur », réutilisée par le panneau Météo. */
+export const ToggleRow = (props: {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;

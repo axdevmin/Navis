@@ -104,6 +104,7 @@ import { dmMap_DMMapFragment$key } from "./__generated__/dmMap_DMMapFragment.gra
 import { dmMap_ShowGridSettingsPopupMapFragment$key } from "./__generated__/dmMap_ShowGridSettingsPopupMapFragment.graphql";
 import { dmMap_ShowGridSettingsPopupGridFragment$key } from "./__generated__/dmMap_ShowGridSettingsPopupGridFragment.graphql";
 import { dmMap_GridSettingButton_MapFragment$key } from "./__generated__/dmMap_GridSettingButton_MapFragment.graphql";
+import { dmMap_VisionFragment$key } from "./__generated__/dmMap_VisionFragment.graphql";
 import { dmMap_mapUpdateGridMutation } from "./__generated__/dmMap_mapUpdateGridMutation.graphql";
 import { dmMap_GridConfigurator_MapFragment$key } from "./__generated__/dmMap_GridConfigurator_MapFragment.graphql";
 import { dmMap_MapPingMutation } from "./__generated__/dmMap_MapPingMutation.graphql";
@@ -111,6 +112,7 @@ import { dmMap_RollDiceMutation } from "./__generated__/dmMap_RollDiceMutation.g
 import {
   WeatherControls,
   WEATHER_OPTIONS,
+  TIME_OF_DAY_OPTIONS,
   MapUpdateWeatherMutation,
   getWeatherPatchForType,
 } from "./weather-controls";
@@ -614,6 +616,8 @@ const WeatherButtonMapFragment = graphql`
   fragment dmMap_WeatherButton_MapFragment on Map {
     weatherSettings {
       type
+      timeOfDay
+      timeIntensity
     }
     ...weatherControls_MapFragment
   }
@@ -628,12 +632,26 @@ const WeatherButton = (props: {
   useOnClickOutside(ref, () => setIsOpen(false));
 
   const weatherType = map.weatherSettings.type as WeatherType;
-  const WeatherIcon = WEATHER_ICONS[weatherType] ?? Icon.Cloud;
+  const { timeOfDay, timeIntensity } = map.weatherSettings;
+  const hasTimeEffect = timeOfDay !== "day" || timeIntensity > 0;
+  // l'icône montre la météo si elle existe, sinon le moment de la journée
+  const WeatherIcon =
+    weatherType !== "none"
+      ? WEATHER_ICONS[weatherType] ?? Icon.Cloud
+      : timeOfDay === "night"
+      ? Icon.Moon
+      : timeOfDay === "morning"
+      ? Icon.Sunrise
+      : timeOfDay === "indoor"
+      ? Icon.Lightbulb
+      : hasTimeEffect
+      ? Icon.Sun
+      : Icon.Cloud;
 
   return (
     <Toolbar.Item
       isOpen={isOpen}
-      hasIndicator={weatherType !== "none"}
+      hasIndicator={weatherType !== "none" || hasTimeEffect}
       ref={ref}
     >
       <Toolbar.Button onClick={() => setIsOpen((v) => !v)}>
@@ -791,6 +809,8 @@ const WEATHER_ICONS: Record<WeatherType, typeof Icon.Cloud> = {
   snow: Icon.CloudSnow,
   wind: Icon.Wind,
   moon: Icon.Moon,
+  fog: Icon.CloudFog,
+  bloodRain: Icon.CloudBlood,
 };
 
 /**
@@ -857,6 +877,8 @@ const MapUpdateRoomsMutation = graphql`
           name
           points
           hasWeather
+          hasLight
+          blocksVision
         }
       }
     }
@@ -953,6 +975,38 @@ const RoomSettings = (): React.ReactElement => {
                 }
               >
                 <Icon.Cloud boxSize="14px" />
+              </RoomIconButton>
+              <RoomIconButton
+                isOn={room.hasLight === true}
+                title={
+                  room.hasLight
+                    ? "Pièce éclairée : la lumière perce la nuit. Cliquer pour l'éteindre."
+                    : "Éclairer cette pièce (lumière intérieure, visible la nuit)."
+                }
+                onClick={() =>
+                  actions.updateRoom(room.id, { hasLight: !room.hasLight })
+                }
+              >
+                <Icon.Lightbulb boxSize="14px" />
+              </RoomIconButton>
+              <RoomIconButton
+                isOn={room.blocksVision === true}
+                title={
+                  room.blocksVision
+                    ? "Porte fermée : la vision des tokens n'entre pas. Cliquer pour l'ouvrir."
+                    : "Fermer la porte : la vision des tokens n'entrera plus dans cette pièce."
+                }
+                onClick={() =>
+                  actions.updateRoom(room.id, {
+                    blocksVision: !room.blocksVision,
+                  })
+                }
+              >
+                {room.blocksVision ? (
+                  <Icon.Lock boxSize="14px" />
+                ) : (
+                  <Icon.Unlock boxSize="14px" />
+                )}
               </RoomIconButton>
               <RoomIconButton
                 title="Supprimer cette pièce (le brouillard n'est pas modifié)"
@@ -1124,10 +1178,32 @@ const MapPingMutation = graphql`
   }
 `;
 
+/** Tokens dotés d'une vision : le brouillard s'efface autour d'eux. */
+const VisionFragment = graphql`
+  fragment dmMap_VisionFragment on Map {
+    grid {
+      columnWidth
+    }
+    tokens {
+      id
+      label
+      x
+      y
+      visionRadius
+      visionMemory
+    }
+    rooms {
+      points
+      blocksVision
+    }
+  }
+`;
+
 const DMMapFragment = graphql`
   fragment dmMap_DMMapFragment on Map {
     id
     title
+    ...dmMap_VisionFragment
     mediaType
     grid {
       offsetX
@@ -1148,11 +1224,14 @@ const DMMapFragment = graphql`
       name
       points
       hasWeather
+      hasLight
+      blocksVision
     }
     weatherSettings {
       type
       intensity
       windAngle
+      timeOfDay
     }
     combat {
       isActive
@@ -1421,6 +1500,125 @@ export const DmMap = (props: {
     persistFog(canvas);
   };
 
+  // Vision : quand un token doté d'une vision avance (déplacé par le MJ ou par
+  // un joueur), le brouillard s'efface définitivement autour de lui, tout le
+  // long de son trajet. C'est une modification du brouillard comme une
+  // autre : annulable, et envoyée selon le mode Direct / Manuel.
+  const vision = useFragment(VisionFragment, map as dmMap_VisionFragment$key);
+  const onFogChangedRef = React.useRef(onFogChanged);
+  React.useEffect(() => {
+    onFogChangedRef.current = onFogChanged;
+  });
+  const visionStateRef = React.useRef<{
+    mapId: string;
+    positions: Map<string, { x: number; y: number; radius: number }>;
+  } | null>(null);
+  const visionKey = vision.tokens
+    .filter((token) => token.visionRadius > 0 && token.visionMemory)
+    .map((token) => `${token.id}:${token.x}:${token.y}:${token.visionRadius}`)
+    .join("|");
+  React.useEffect(() => {
+    const previous = visionStateRef.current;
+    const positions = new Map<
+      string,
+      { x: number; y: number; radius: number }
+    >();
+    for (const token of vision.tokens) {
+      // les visions sans mémoire sont rendues à l'affichage, pas écrites
+      if (token.visionRadius > 0 && token.visionMemory) {
+        positions.set(token.id, {
+          x: token.x,
+          y: token.y,
+          radius: token.visionRadius,
+        });
+      }
+    }
+    visionStateRef.current = { mapId: map.id, positions };
+    // à l'ouverture d'une carte, on ne révèle rien : seulement les
+    // déplacements qui suivent
+    if (previous === null || previous.mapId !== map.id) return;
+
+    const moves: Array<{
+      from: { x: number; y: number };
+      to: { x: number; y: number; radius: number };
+      label: string;
+    }> = [];
+    for (const token of vision.tokens) {
+      const current = positions.get(token.id);
+      if (!current) continue;
+      const before = previous.positions.get(token.id);
+      if (
+        before &&
+        before.x === current.x &&
+        before.y === current.y &&
+        before.radius === current.radius
+      ) {
+        continue;
+      }
+      // vision qui vient d'être activée : on révèle sur place
+      moves.push({ from: before ?? current, to: current, label: token.label });
+    }
+    if (moves.length === 0) return;
+
+    const context = controlRef.current?.getContext();
+    if (!context) return;
+    ensureFogBaselineRef.current();
+    const toCanvas = context.helper.coordinates.imageToCanvas;
+    const cellSize = vision.grid?.columnWidth ?? 50;
+    const canvasContext = context.fogCanvas.getContext("2d")!;
+    canvasContext.save();
+    // les pièces fermées sont exclues : la vision n'y entre pas
+    const closedRooms = vision.rooms.filter((room) => room.blocksVision);
+    if (closedRooms.length > 0) {
+      canvasContext.beginPath();
+      canvasContext.rect(
+        0,
+        0,
+        context.fogCanvas.width,
+        context.fogCanvas.height
+      );
+      for (const room of closedRooms) {
+        traceRoomPath(
+          canvasContext,
+          roomVertices(room.points).flatMap((vertex) => toCanvas(vertex))
+        );
+      }
+      canvasContext.clip("evenodd");
+    }
+    canvasContext.globalCompositeOperation = "destination-out";
+    canvasContext.fillStyle = "black";
+    for (const move of moves) {
+      const radius =
+        toCanvas([move.to.radius * cellSize, 0])[0] - toCanvas([0, 0])[0];
+      const [fromX, fromY] = toCanvas([move.from.x, move.from.y]);
+      const [toX, toY] = toCanvas([move.to.x, move.to.y]);
+      // des cercles tous les demi-rayons : le trajet est révélé sans trou
+      const distance = Math.hypot(toX - fromX, toY - fromY);
+      const steps = Math.max(1, Math.ceil(distance / Math.max(1, radius / 2)));
+      for (let step = 0; step <= steps; step++) {
+        const t = step / steps;
+        canvasContext.beginPath();
+        canvasContext.arc(
+          fromX + (toX - fromX) * t,
+          fromY + (toY - fromY) * t,
+          radius,
+          0,
+          Math.PI * 2
+        );
+        canvasContext.fill();
+      }
+    }
+    canvasContext.restore();
+    context.fogTexture.needsUpdate = true;
+    requestMapRender();
+    onFogChangedRef.current(
+      context.fogCanvas,
+      moves.length === 1 ? `Vision : ${moves[0].label}` : "Vision"
+    );
+    // les positions résumées par visionKey suffisent
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visionKey, map.id]);
+
   // Modifications de tokens : on note la valeur d'avant pour pouvoir y revenir.
   const rawUpdateTokenRef = React.useRef(props.updateToken);
   React.useEffect(() => {
@@ -1485,6 +1683,8 @@ export const DmMap = (props: {
             name: room.name,
             points: [...room.points],
             hasWeather: room.hasWeather,
+            hasLight: room.hasLight === true,
+            blocksVision: room.blocksVision === true,
           })),
         },
       },
@@ -1848,6 +2048,33 @@ export const DmMap = (props: {
                 type: option.type,
                 intensity: weather.intensity,
                 windAngle: patch.windAngle ?? weather.windAngle,
+              },
+            },
+          },
+        });
+      },
+    })),
+    ...TIME_OF_DAY_OPTIONS.filter(
+      (option) => option.value !== map.weatherSettings.timeOfDay
+    ).map((option) => ({
+      id: `time:${option.value}`,
+      title: `Moment : ${option.label}`,
+      group: "Météo",
+      icon: <option.icon boxSize="16px" />,
+      keywords:
+        "meteo heure matin jour journee nuit soleil interieur donjon grotte",
+      run: () => {
+        const weather = map.weatherSettings;
+        updateWeather({
+          variables: {
+            input: {
+              mapId: map.id,
+              weatherSettings: {
+                type: weather.type as WeatherType,
+                intensity: weather.intensity,
+                windAngle: weather.windAngle,
+                timeOfDay: option.value,
+                timeIntensity: option.defaultIntensity,
               },
             },
           },

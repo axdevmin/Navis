@@ -15,6 +15,7 @@ import {
   MapTokenEntity,
   TokenType,
   WeatherSettings,
+  TimeOfDay,
   MapRoom,
   WeatherType,
 } from "../../maps";
@@ -64,6 +65,7 @@ const GraphQLTokenTypeEnum = t.enumType<TokenType>({
     { name: "object", value: "object" as const },
     { name: "hazard", value: "hazard" as const },
     { name: "marker", value: "marker" as const },
+    { name: "light", value: "light" as const },
   ],
 });
 
@@ -79,6 +81,19 @@ const GraphQLWeatherTypeEnum = t.enumType<WeatherType>({
     { name: "moon", value: "moon" as const },
     { name: "wind", value: "wind" as const },
     { name: "cloudy", value: "cloudy" as const },
+    { name: "fog", value: "fog" as const },
+    { name: "bloodRain", value: "bloodRain" as const },
+  ],
+});
+
+const GraphQLTimeOfDayEnum = t.enumType<TimeOfDay>({
+  name: "TimeOfDay",
+  description: "Moment de la journée, indépendant de la météo.",
+  values: [
+    { name: "morning", value: "morning" as const },
+    { name: "day", value: "day" as const },
+    { name: "night", value: "night" as const },
+    { name: "indoor", value: "indoor" as const },
   ],
 });
 
@@ -88,6 +103,32 @@ const GraphQLWeatherSettingsType = t.objectType<WeatherSettings>({
     t.field({ name: "type", type: t.NonNull(GraphQLWeatherTypeEnum) }),
     t.field({ name: "intensity", type: t.NonNull(t.Float) }),
     t.field({ name: "windAngle", type: t.NonNull(t.Float) }),
+    t.field({
+      name: "tokensAboveWeather",
+      description: "Les tokens passent par-dessus la météo.",
+      type: t.NonNull(t.Boolean),
+      resolve: (source) => source.tokensAboveWeather ?? false,
+    }),
+    t.field({
+      name: "timeOfDay",
+      type: t.NonNull(GraphQLTimeOfDayEnum),
+      resolve: (source) => source.timeOfDay ?? "day",
+    }),
+    t.field({
+      name: "timeIntensity",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.timeIntensity ?? 0,
+    }),
+    t.field({
+      name: "lightAngle",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.lightAngle ?? -30,
+    }),
+    t.field({
+      name: "fireflies",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.fireflies ?? 0.5,
+    }),
   ],
 });
 
@@ -97,6 +138,12 @@ const GraphQLWeatherSettingsInputType = t.inputObjectType({
     type: { type: t.NonNullInput(GraphQLWeatherTypeEnum) },
     intensity: { type: t.NonNullInput(t.Float) },
     windAngle: { type: t.NonNullInput(t.Float) },
+    /** Absent : la valeur actuelle de la carte est conservée. */
+    tokensAboveWeather: { type: t.Boolean },
+    timeOfDay: { type: GraphQLTimeOfDayEnum },
+    timeIntensity: { type: t.Float },
+    lightAngle: { type: t.Float },
+    fireflies: { type: t.Float },
   }),
 });
 
@@ -129,6 +176,61 @@ const GraphQLMapRoomType = t.objectType<MapRoom>({
       type: t.NonNull(t.List(t.NonNull(t.Float))),
     }),
     t.field({ name: "hasWeather", type: t.NonNull(t.Boolean) }),
+    t.field({
+      name: "hasLight",
+      description: "La pièce est éclairée de l'intérieur.",
+      type: t.NonNull(t.Boolean),
+      resolve: (source) => source.hasLight === true,
+    }),
+    t.field({
+      name: "blocksVision",
+      description:
+        "Porte fermée : la vision des tokens n'entre pas dans la pièce.",
+      type: t.NonNull(t.Boolean),
+      resolve: (source) => source.blocksVision === true,
+    }),
+  ],
+});
+
+const GraphQLMapVisionType = t.objectType<{
+  id: string;
+  tokenId: string;
+  x: number;
+  y: number;
+  radius: number;
+}>({
+  name: "MapVision",
+  description:
+    "Vision sans mémoire d'un token : seul ce cercle est visible (position en pixels de l'image, portée en cases).",
+  fields: () => [
+    t.field({ name: "id", type: t.NonNull(t.ID) }),
+    t.field({ name: "tokenId", type: t.NonNull(t.ID) }),
+    t.field({ name: "x", type: t.NonNull(t.Float) }),
+    t.field({ name: "y", type: t.NonNull(t.Float) }),
+    t.field({ name: "radius", type: t.NonNull(t.Float) }),
+  ],
+});
+
+const GraphQLMapLightType = t.objectType<{
+  id: string;
+  tokenId: string;
+  x: number;
+  y: number;
+  lightType: string;
+  radius: number;
+}>({
+  name: "MapLight",
+  description:
+    "Une source de lumière portée par un token (position en pixels de l'image, portée en cases).",
+  fields: () => [
+    // identifiant distinct du token : Relay fusionnerait sinon les deux
+    // objets (et la portée écraserait la taille du token, ou l'inverse)
+    t.field({ name: "id", type: t.NonNull(t.ID) }),
+    t.field({ name: "tokenId", type: t.NonNull(t.ID) }),
+    t.field({ name: "x", type: t.NonNull(t.Float) }),
+    t.field({ name: "y", type: t.NonNull(t.Float) }),
+    t.field({ name: "lightType", type: t.NonNull(t.String) }),
+    t.field({ name: "radius", type: t.NonNull(t.Float) }),
   ],
 });
 
@@ -139,6 +241,8 @@ const GraphQLMapRoomInputType = t.inputObjectType({
     name: { type: t.NonNullInput(t.String) },
     points: { type: t.NonNullInput(t.ListInput(t.NonNullInput(t.Float))) },
     hasWeather: { type: t.NonNullInput(t.Boolean) },
+    hasLight: { type: t.Boolean },
+    blocksVision: { type: t.Boolean },
   }),
 });
 
@@ -385,6 +489,8 @@ const GraphQLMapTokenAddManyTokenInput = t.inputObjectType({
     tokenType: t.arg(GraphQLTokenTypeEnum),
     isAlive: t.arg(t.Boolean),
     imageUrl: t.arg(t.String),
+    lightType: t.arg(t.String),
+    lightRadius: t.arg(t.Float),
   }),
 });
 
@@ -771,6 +877,12 @@ export const mutationFields = [
             type: input.weatherSettings.type as WeatherType,
             intensity: input.weatherSettings.intensity,
             windAngle: input.weatherSettings.windAngle,
+            tokensAboveWeather:
+              input.weatherSettings.tokensAboveWeather ?? undefined,
+            timeOfDay: input.weatherSettings.timeOfDay ?? undefined,
+            timeIntensity: input.weatherSettings.timeIntensity ?? undefined,
+            lightAngle: input.weatherSettings.lightAngle ?? undefined,
+            fireflies: input.weatherSettings.fireflies ?? undefined,
           },
         }),
         context
@@ -794,6 +906,8 @@ export const mutationFields = [
               name: room.name,
               points: room.points,
               hasWeather: room.hasWeather,
+              hasLight: room.hasLight === true,
+              blocksVision: room.blocksVision === true,
             })),
         }),
         context
@@ -1082,6 +1196,32 @@ const GraphQLMapTokenType = t.objectType<MapTokenEntity>({
       resolve: (source) => source.conditions ?? [],
     }),
     t.field({
+      name: "lightType",
+      description: "Lumière portée par le token (null : aucune).",
+      type: t.String,
+      resolve: (source) => source.lightType ?? null,
+    }),
+    t.field({
+      name: "lightRadius",
+      description: "Portée de la lumière, en cases.",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.lightRadius ?? 4,
+    }),
+    t.field({
+      name: "visionRadius",
+      description:
+        "Vision : le brouillard s'efface autour du token quand il avance (en cases, 0 : aucune).",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.visionRadius ?? 0,
+    }),
+    t.field({
+      name: "visionMemory",
+      description:
+        "true : ce que voit le token reste révélé ; false : le brouillard se referme derrière lui.",
+      type: t.NonNull(t.Boolean),
+      resolve: (source) => source.visionMemory !== false,
+    }),
+    t.field({
       name: "imageUrl",
       type: t.String,
       resolve: (source) => source.imageUrl ?? null,
@@ -1194,12 +1334,61 @@ const GraphQLMapType = t.objectType<MapEntity>({
     t.field({
       name: "rooms",
       description:
-        "Rooms drawn by the DM. Players only receive the ones sheltered from the weather, which they need to mask it; the others would reveal the layout of unexplored areas.",
+        "Rooms drawn by the DM. Players only receive the ones sheltered from the weather or lit, which they need to render them; the others would reveal the layout of unexplored areas.",
       type: t.NonNull(t.List(t.NonNull(GraphQLMapRoomType))),
       resolve: (source, _, context) =>
         context.session.role === "admin"
           ? source.rooms ?? []
-          : (source.rooms ?? []).filter((room) => room.hasWeather === false),
+          : (source.rooms ?? []).filter(
+              (room) =>
+                room.hasWeather === false ||
+                room.hasLight === true ||
+                room.blocksVision === true
+            ),
+    }),
+    t.field({
+      name: "visions",
+      description:
+        "Visions sans mémoire des tokens : le brouillard ne s'ouvre que dans ces cercles. Les joueurs reçoivent celles des tokens qu'ils voient.",
+      type: t.NonNull(t.List(t.NonNull(GraphQLMapVisionType))),
+      resolve: (source, _, context) =>
+        (source.tokens ?? [])
+          .filter(
+            (token) =>
+              (token.visionRadius ?? 0) > 0 &&
+              token.visionMemory === false &&
+              (context.session.role === "admin" || token.isVisibleForPlayers)
+          )
+          .map((token) => ({
+            id: `MapVision:${token.id}`,
+            tokenId: token.id,
+            x: token.x,
+            y: token.y,
+            radius: token.visionRadius,
+          })),
+    }),
+    t.field({
+      name: "lights",
+      description:
+        "Sources de lumière des tokens. Les joueurs reçoivent celles des tokens qu'ils voient et des tokens « lumière » (cheminée, feu…), invisibles mais dont la lueur se voit.",
+      type: t.NonNull(t.List(t.NonNull(GraphQLMapLightType))),
+      resolve: (source, _, context) =>
+        (source.tokens ?? [])
+          .filter(
+            (token) =>
+              token.lightType != null &&
+              (context.session.role === "admin" ||
+                token.isVisibleForPlayers ||
+                token.tokenType === "light")
+          )
+          .map((token) => ({
+            id: `MapLight:${token.id}`,
+            tokenId: token.id,
+            x: token.x,
+            y: token.y,
+            lightType: token.lightType as string,
+            radius: token.lightRadius ?? 4,
+          })),
     }),
     t.field({
       name: "combat",

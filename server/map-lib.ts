@@ -12,6 +12,7 @@ import type {
   WeatherSettings,
   MapRoom,
 } from "./maps";
+import { normalizeWeatherSettings } from "./maps";
 import * as auth from "./auth";
 import type { Settings } from "./settings";
 import { invalidateResourcesRT } from "./live-query-store";
@@ -93,6 +94,8 @@ export const addManyMapToken = (params: {
     isVisibleForPlayers?: boolean | null;
     isMovableByPlayers?: boolean | null;
     tokenImageId?: null | string;
+    lightType?: string | null;
+    lightRadius?: number | null;
   }>;
 }) =>
   pipe(
@@ -451,7 +454,15 @@ export const mapUpdateWeather = (params: {
     RT.chain(
       (deps) => () => () =>
         deps.maps.updateMapSettings(params.mapId, {
-          weatherSettings: params.weatherSettings,
+          // les réglages absents de la demande gardent leur valeur actuelle
+          weatherSettings: normalizeWeatherSettings({
+            ...deps.maps.get(params.mapId)?.weatherSettings,
+            ...Object.fromEntries(
+              Object.entries(params.weatherSettings).filter(
+                ([, value]) => value !== undefined
+              )
+            ),
+          }),
         })
     ),
     RT.chainW((map) =>

@@ -1384,3 +1384,92 @@ export const MapReveal = createIcon({
     boxSize: "30px",
   },
 });
+
+/** Brume : un nuage posé sur des traînées horizontales. */
+export const CloudFog = createIcon({
+  displayName: "CloudFog",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M4 14.9A7 7 0 1115.71 8h1.79a4.5 4.5 0 012.5 8.24" />
+      <path d="M16 17H7" />
+      <path d="M17 21H9" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+
+/** Pluie de sang : nuage et gouttes pleines. */
+export const CloudBlood = createIcon({
+  displayName: "CloudBlood",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M4 14.9A7 7 0 1115.71 8h1.79a4.5 4.5 0 012.5 8.24" />
+      <path d="M9 15.5l1.6 2.6a1.9 1.9 0 11-3.2 0z" fill="currentColor" />
+      <path d="M15 17.5l1.6 2.6a1.9 1.9 0 11-3.2 0z" fill="currentColor" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+
+/** Lever de soleil (moment « Matin »). */
+export const Sunrise = createIcon({
+  displayName: "Sunrise",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M17 18a5 5 0 00-10 0" />
+      <path d="M12 2v7" />
+      <path d="M4.22 10.22l1.42 1.42" />
+      <path d="M1 18h2" />
+      <path d="M21 18h2" />
+      <path d="M18.36 11.64l1.42-1.42" />
+      <path d="M23 22H1" />
+      <path d="M8 6l4-4 4 4" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+
+/** Ampoule (pièce éclairée). */
+export const Lightbulb = createIcon({
+  displayName: "Lightbulb",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M9 18h6" />
+      <path d="M10 22h4" />
+      <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0018 8 6 6 0 006 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 018.91 14" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});

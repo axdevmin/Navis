@@ -34,6 +34,7 @@ const TOKEN_TYPE_COLORS: Record<TokenType, string> = {
   object: "#ffaa33",
   hazard: "#ff6633",
   marker: "#aa44ff",
+  light: "#ffb347",
 };
 
 export type TokenPreset = {
@@ -42,6 +43,9 @@ export type TokenPreset = {
   color: string;
   emoji: string;
   imageUrl: string;
+  /** Lumière portée par le token posé (voir light-sources). */
+  lightType?: string;
+  lightRadius?: number;
 };
 
 export const TOKEN_PRESET_LIBRARY: Array<{
@@ -186,6 +190,66 @@ export const TOKEN_PRESET_LIBRARY: Array<{
         color: "#555577",
         emoji: "⛩",
         imageUrl: buildUrl("/images/tokens/altar.svg"),
+      },
+    ],
+  },
+  {
+    // Lumières seules, invisibles des joueurs : seule leur lueur se voit.
+    category: "Lumières",
+    tokens: [
+      {
+        label: "Torche",
+        tokenType: "light",
+        color: "#cc7722",
+        emoji: "🔥",
+        imageUrl: buildUrl("/images/tokens/torch.svg"),
+        lightType: "torch",
+        lightRadius: 4,
+      },
+      {
+        label: "Bougie",
+        tokenType: "light",
+        color: "#d9a441",
+        emoji: "🕯",
+        imageUrl: buildUrl("/images/tokens/torch.svg"),
+        lightType: "candle",
+        lightRadius: 2,
+      },
+      {
+        label: "Feu de camp",
+        tokenType: "light",
+        color: "#dd5511",
+        emoji: "🔥",
+        imageUrl: buildUrl("/images/tokens/fire.svg"),
+        lightType: "campfire",
+        lightRadius: 6,
+      },
+      {
+        label: "Cheminée",
+        tokenType: "light",
+        color: "#b8501c",
+        emoji: "🔥",
+        imageUrl: buildUrl("/images/tokens/fire.svg"),
+        lightType: "fireplace",
+        lightRadius: 5,
+      },
+      {
+        label: "Lanterne",
+        tokenType: "light",
+        color: "#d8b060",
+        emoji: "🏮",
+        imageUrl: buildUrl("/images/tokens/torch.svg"),
+        lightType: "lantern",
+        lightRadius: 5,
+      },
+      {
+        label: "Magique",
+        tokenType: "light",
+        color: "#5a78d8",
+        emoji: "✨",
+        imageUrl: buildUrl("/images/tokens/lightning.svg"),
+        lightType: "magic",
+        lightRadius: 5,
       },
     ],
   },
