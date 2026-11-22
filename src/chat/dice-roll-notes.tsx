@@ -1,16 +1,35 @@
 import * as React from "react";
 import styled from "@emotion/styled/macro";
-import { Flex, Box } from "@chakra-ui/react";
-import { loose } from "../chakra-loose";
-
-const FlexLoose = loose(Flex);
-const BoxLoose = loose(Box);
 import * as Icon from "../feather-icons";
 import { HtmlContainer } from "../dm-area/components/html-container";
 import debounce from "lodash/debounce";
 import { useStaticRef } from "../hooks/use-static-ref";
 import { DraggableWindow, SetWidthHandler } from "../draggable-window";
 import { usePersistedState } from "../hooks/use-persisted-state";
+import { ds } from "../design-system";
+
+/** Largeur en lecture seule, et en édition (texte + aperçu côte à côte). */
+const READ_WIDTH = 460;
+const WRITE_WIDTH = 880;
+
+const Columns = styled.div`
+  display: flex;
+  height: 100%;
+  max-height: 100%;
+`;
+
+const EditorColumn = styled.div`
+  flex: 1;
+  min-width: 0;
+  border-right: 1px solid ${ds.colors.border};
+`;
+
+const PreviewColumn = styled.div`
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+`;
 
 /** Éditeur de texte simple : le markdown s'écrit très bien sans coloration. */
 const Editor = styled.textarea`
@@ -22,121 +41,78 @@ const Editor = styled.textarea`
   outline: none !important;
   resize: none;
   background: transparent;
-  color: inherit;
+  color: ${ds.colors.textPrimary};
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.55;
 `;
 
-const WindowContent = styled.div`
-  overflow-y: scroll;
-  height: 100%;
-  width: 100%;
-  padding: 12px;
-  padding-top: 8px;
-`;
+const INITIAL_CONTENT = `## Lancers simples
 
-const INITIAL_CONTENT = `## Basic Dice Rolling
+Tapez un lancer entre crochets dans le chat : **[1d20]**. Ou cliquez sur un dé ci-dessous.
 
-You can roll dice by typing in the dice notation in the Chat: **[1d20]**. 
-Alternatively, you can click on the common dice rolls below.
+<ChatMacro message="[1d20]">**d20**</ChatMacro>
+<ChatMacro message="[1d12]">**d12**</ChatMacro>
+<ChatMacro message="[1d10]">**d10**</ChatMacro>
+<ChatMacro message="[1d8]">**d8**</ChatMacro>
+<ChatMacro message="[1d6]">**d6**</ChatMacro>
+<ChatMacro message="[1d4]">**d4**</ChatMacro>
+<ChatMacro message="[1d100]">**d100**</ChatMacro>
 
-<ChatMacro message="[1d20]">
-  **d20**
-</ChatMacro>
-<ChatMacro message="[1d12]">
-  **d12**
-</ChatMacro>
-<ChatMacro message="[1d10]">
-  **d10**
-</ChatMacro>
-<ChatMacro message="[1d8]">
-  **d8**
-</ChatMacro>
-<ChatMacro message="[1d6]">
-  **d6**
-</ChatMacro>
-<ChatMacro message="[1d4]">
-  **d4**
-</ChatMacro>
-<ChatMacro message="[1d100]">
-  **d100**
-</ChatMacro>
+## Formules
 
+Les formules s'écrivent aussi entre crochets, par exemple :
 
-## Formula Rolling
+<ChatMacro message="[3d6 + 5]">**[3d6 + 5]**</ChatMacro>
 
-You can roll more complicated dice by typing in the [dice notation](https://en.wikipedia.org/wiki/Dice_notation) in the Chat:
-<ChatMacro message="[3d6 + 5]">
-  **[3d6 + 5]**
-</ChatMacro>
+## Macros
 
-The formula of a dice roll must be surrounded by square brackets.
+Une macro est un bouton qui envoie un message et ses lancers dans le chat. Cliquez sur le crayon en haut de cette fenêtre pour modifier ce texte et créer les vôtres : il est enregistré dans ce navigateur.
 
-You can also simply click the dice roll text above. It is a macro that will trigger the dice roll in the chat.
+<ChatMacro message="Projectile magique [(1d4 + 1) * 3]">Projectile magique</ChatMacro>
+<ChatMacro message="Projectile magique [(1d4 + 1) * 4]">Niveau 2</ChatMacro>
+<ChatMacro message="Projectile magique [(1d4 + 1) * 5]">Niveau 3</ChatMacro>
 
+<ChatMacro message="Initiative [1d20 + 5]">Initiative</ChatMacro>
 
-## Macro Rolling
+<ChatMacro message="Attaque à l'épée [1d20 + 5], dégâts tranchants [1d8]">Attaque à l'épée</ChatMacro>
 
-Macros can contain text and dice rolls. Click the edit button on the top right to learn how to write your own macros.
-You can simply edit this text and add macros that suit your game. They will be stored so you can access them every time you are using Navis!
+## Modèles
 
-Here are some more examples:
-
-<ChatMacro message="Magic Missle [(1d4 + 1) * 3]">Magic Missle</ChatMacro> 
- <ChatMacro message="Magic Missle [(1d4 + 1) * 4]">2nd level</ChatMacro> 
- <ChatMacro message="Magic Missle [(1d4 + 1) * 5]">3rd level</ChatMacro>
-
-<ChatMacro message="Roll Initiative [1d20 + 5]">Roll Initiative</ChatMacro>
-
-<ChatMacro message="Climb [1d20 + 5][1d20 + 5][1d20 + 5]">Skill Check (DSA)</ChatMacro>
-
-<ChatMacro message="Attack Roll [1d20 + 5] with Sword does [1d8] slasing damage">Attack with sword</ChatMacro>
-
-<ChatMacro message="Stab the unarmed from behind!">Motivate players</ChatMacro>
-
-It is also possible to declare re-usable templates.
+Un modèle met en forme le résultat d'une macro et se réutilise avec des variables.
 
 <Template id="attackTemplate">
-  <BoxLoose>
+  <Box>
     <BoxRow>
-      **<span style="color:red">Attack with {{weapon}}</span>**
+      **Attaque : {{weapon}}**
     </BoxRow>
     <BoxRow>
-      <BoxColumn>
-        Attack Roll
-      </BoxColumn>
-      <BoxColumn>
-        {{attackRollFormula}}
-      </BoxColumn>
+      <BoxColumn>Toucher</BoxColumn>
+      <BoxColumn>{{attackRollFormula}}</BoxColumn>
     </BoxRow>
     <BoxRow>
-      <BoxColumn>
-        Damage
-      </BoxColumn>
-      <BoxColumn>
-        {{damageRollFormula}}
-      </BoxColumn>
+      <BoxColumn>Dégâts</BoxColumn>
+      <BoxColumn>{{damageRollFormula}}</BoxColumn>
     </BoxRow>
-  </BoxLoose>
+  </Box>
 </Template>
 
 <ChatMacro
   templateId="attackTemplate"
-  var-weapon="Handaxe"
+  var-weapon="Hachette"
   var-attackRollFormula="[1d20 + 5]"
   var-damageRollFormula="[1d6 + 6]"
 >
-  Attack with Handaxe
+  Attaque à la hachette
 </ChatMacro>
 
 <ChatMacro
   templateId="attackTemplate"
-  var-weapon="Axe"
+  var-weapon="Dague"
   var-attackRollFormula="[1d20 + 5]"
   var-damageRollFormula="[1d4 + 4]"
 >
-  Attack with Dagger
+  Attaque à la dague
 </ChatMacro>
 `;
 
@@ -165,61 +141,68 @@ export const DiceRollNotes: React.FC<{ close: () => void }> = ({ close }) => {
   const setWidthRef = React.useRef<SetWidthHandler | null>(null);
 
   React.useLayoutEffect(() => {
-    if (mode === "read") {
-      setWidthRef.current?.((value) => Math.max(value / 2, 500));
-    } else {
-      setWidthRef.current?.((value) => value * 2);
-    }
+    setWidthRef.current?.(() => (mode === "read" ? READ_WIDTH : WRITE_WIDTH));
   }, [mode]);
 
   return (
     <DraggableWindow
       setWidthRef={setWidthRef}
-      headerContent={
-        <>
-          <div style={{ fontWeight: "bold" }}>Dice Roll Notes</div>
-        </>
-      }
+      initialWidth={READ_WIDTH}
+      headerContent="Aide aux dés"
       options={[
+        mode === "read"
+          ? {
+              onClick: () => setMode("write"),
+              title: "Modifier",
+              icon: <Icon.Edit boxSize="16px" />,
+            }
+          : {
+              onClick: () => setMode("read"),
+              title: "Terminer",
+              icon: <Icon.Check boxSize="16px" />,
+            },
         {
-          onClick: () =>
-            setMode((mode) => (mode === "read" ? "write" : "read")),
-          title: mode === "read" ? "Edit" : "Save",
-          icon:
-            mode === "read" ? (
-              <Icon.Edit boxSize="16px" />
-            ) : (
-              <Icon.Save boxSize="16px" />
-            ),
+          onClick: () => {
+            if (
+              window.confirm(
+                "Remplacer ce texte par l'aide d'origine ? Vos macros seront perdues."
+              )
+            ) {
+              setDraft(INITIAL_CONTENT);
+              persistContent(INITIAL_CONTENT);
+            }
+          },
+          title: "Revenir à l'aide d'origine",
+          icon: <Icon.RotateCW boxSize="16px" />,
         },
       ]}
       bodyContent={
-        <FlexLoose maxHeight="100%" height="100%">
+        <Columns>
           {mode === "write" ? (
-            <BoxLoose maxWidth="50%" flex="1">
+            <EditorColumn>
               <Editor
                 autoFocus
                 spellCheck={false}
                 value={content}
+                aria-label="Texte de l'aide aux dés"
                 onChange={(ev) => {
                   setDraft(ev.target.value);
                   persistLater(ev.target.value);
                 }}
               />
-            </BoxLoose>
+            </EditorColumn>
           ) : null}
-          <BoxLoose flex="1">
-            <WindowContent>
-              <HtmlContainer markdown={content} />
-            </WindowContent>
-          </BoxLoose>
-        </FlexLoose>
+          <PreviewColumn>
+            <HtmlContainer markdown={content} />
+          </PreviewColumn>
+        </Columns>
       }
       close={close}
       onKeyDown={(ev) => {
         ev.stopPropagation();
         if (ev.key !== "Escape") return;
-        if (mode === "read") close();
+        if (mode === "write") setMode("read");
+        else close();
       }}
     />
   );

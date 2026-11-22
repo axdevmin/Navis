@@ -2,9 +2,9 @@ import * as React from "react";
 import styled from "@emotion/styled/macro";
 
 const Box = styled.div`
-  border: 0.5px solid lightgrey;
-  padding: 8px;
-  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 8px 10px;
+  border-radius: 6px;
 `;
 
 const BoxRow = styled.div`

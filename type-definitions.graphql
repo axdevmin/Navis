@@ -372,6 +372,11 @@ type MapToken {
   referenceId: ID
   tokenType: TokenType!
   isAlive: Boolean!
+
+  """
+  Identifiants des états posés sur le token.
+  """
+  conditions: [String!]!
   imageUrl: String
 }
 

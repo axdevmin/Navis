@@ -365,6 +365,7 @@ module.exports = ({ roleMiddleware, maps, settings, emitter }) => {
         tokenImageId: req.body.tokenImageId,
         tokenType: req.body.tokenType,
         isAlive: req.body.isAlive,
+        conditions: req.body.conditions,
       };
     }
 

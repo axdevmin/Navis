@@ -1332,3 +1332,55 @@ export const RotateCW = createIcon({
     boxSize: "30px",
   },
 });
+
+/** Carte entièrement masquée : un bloc plein. */
+export const MapShroud = createIcon({
+  displayName: "MapShroud",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="2.5" />
+      <rect
+        x="7"
+        y="7"
+        width="10"
+        height="10"
+        rx="1"
+        fill="currentColor"
+        stroke="none"
+      />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+
+/** Carte entièrement révélée : un cadre vide en pointillés. */
+export const MapReveal = createIcon({
+  displayName: "MapReveal",
+  viewBox: "0 0 24 24",
+  path: (
+    <rect
+      x="3.5"
+      y="3.5"
+      width="17"
+      height="17"
+      rx="2.5"
+      strokeDasharray="3.2 3.2"
+    />
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});

@@ -14,7 +14,9 @@ import * as Icon from "./feather-icons";
 import * as Button from "./button";
 import { ds } from "./design-system";
 
-const WindowContainer = styled(animated.div)<{ isSideBarVisible: boolean }>`
+const WindowContainer = styled(animated.div, {
+  shouldForwardProp: (prop) => prop !== "isSideBarVisible",
+})<{ isSideBarVisible: boolean }>`
   position: absolute;
   box-shadow: ${ds.shadows.lg};
   border-radius: ${ds.radii.lg};
@@ -112,6 +114,9 @@ const hasButtonParent = (el: any) => {
   return isButton;
 };
 
+/** Écart minimal entre la fenêtre et les bords de l'écran. */
+const WINDOW_MARGIN = 12;
+
 export type SetWidthHandler = (f: (width: number) => number) => void;
 
 export const DraggableWindow = ({
@@ -125,6 +130,7 @@ export const DraggableWindow = ({
   onDidResize,
   sideBarContent,
   setWidthRef,
+  initialWidth = 500,
 }: {
   headerContent: React.ReactNode;
   bodyContent: React.ReactNode;
@@ -141,18 +147,31 @@ export const DraggableWindow = ({
   onDidResize?: () => void;
   sideBarContent?: React.ReactElement | null | undefined;
   setWidthRef?: React.MutableRefObject<SetWidthHandler | null>;
+  initialWidth?: number;
 }): JSX.Element => {
-  const [props, set] = useSpring(() => ({
-    x: window.innerWidth / 2 - 500 / 2,
-    y: window.innerHeight / 4,
-    width: 500,
-    height: window.innerHeight / 2,
-  }));
+  const [props, set] = useSpring(() => {
+    const width = Math.min(initialWidth, window.innerWidth - 2 * WINDOW_MARGIN);
+    return {
+      x: window.innerWidth / 2 - width / 2,
+      y: window.innerHeight / 4,
+      width,
+      height: window.innerHeight / 2,
+    };
+  });
 
   React.useEffect(() => {
     if (setWidthRef) {
+      // La fenêtre reste toujours entière à l'écran quand elle s'élargit.
       setWidthRef.current = (f) => {
-        props.width.set(f(props.width.get()));
+        const width = Math.min(
+          f(props.width.get()),
+          window.innerWidth - 2 * WINDOW_MARGIN
+        );
+        const maxX = window.innerWidth - WINDOW_MARGIN - width;
+        props.width.set(width);
+        if (props.x.get() > maxX) {
+          props.x.set(Math.max(WINDOW_MARGIN, maxX));
+        }
       };
     }
   });
@@ -245,6 +264,7 @@ export const DraggableWindow = ({
               <Button.Tertiary
                 small
                 iconOnly
+                aria-label={option.title}
                 onClick={option.onClick}
                 disabled={option.isDisabled}
               >

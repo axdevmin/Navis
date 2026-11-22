@@ -27,6 +27,14 @@ import { getOptimalDimensions, loadImage } from "./util";
 import { useStaticRef } from "./hooks/use-static-ref";
 import { buildUrl } from "./public-url";
 import { CanvasText, CanvasTextRef } from "./canvas-text";
+import {
+  getConditionTexture,
+  parseConditions,
+  resolveConditions,
+  serializeConditions,
+} from "./token-conditions";
+import { floatingSurface } from "./ui";
+import { ds } from "./design-system";
 import type {
   MapTool,
   MapToolMapGestureHandlers,
@@ -77,6 +85,7 @@ import { DiceRollRenderer } from "./dice-roll-renderer";
 
 type Vector2D = [number, number];
 
+/** Couleur du contour selon le type : on reconnaît d'un coup d'œil qui est qui. */
 const TOKEN_TYPE_COLORS: Record<TokenType, string> = {
   character: "#4488ff",
   creature: "#ff4444",
@@ -84,6 +93,8 @@ const TOKEN_TYPE_COLORS: Record<TokenType, string> = {
   hazard: "#ff6633",
   marker: "#aa44ff",
 };
+/** Épaisseur du contour, en fraction du rayon du token. */
+const TOKEN_OUTLINE_WIDTH = 0.12;
 
 enum LayerRenderOrder {
   map = 0,
@@ -246,6 +257,7 @@ const TokenRendererMapTokenFragment = graphql`
     tokenType
     isAlive
     imageUrl
+    conditions
     tokenImage {
       id
       title
@@ -292,6 +304,7 @@ const TokenRenderer = (props: {
       isMovableByPlayers: token.isMovableByPlayers,
       tokenType: token.tokenType,
       isAlive: token.isAlive,
+      conditions: [...token.conditions],
     });
   });
   React.useEffect(
@@ -559,6 +572,19 @@ const TokenRenderer = (props: {
         },
         transient: false,
       },
+      // liste d'identifiants séparés par des virgules (voir token-conditions)
+      conditions: {
+        type: LevaInputs.STRING,
+        label: "États",
+        value: serializeConditions(token.conditions),
+        onChange: (value: string, _, { initial, fromPanel }) => {
+          if (initial || !fromPanel) {
+            return;
+          }
+          updateToken(props.id, { conditions: parseConditions(value) });
+        },
+        transient: false,
+      },
       "Enregistrer comme personnage": button(() => {
         saveAsLibraryCharacter({
           variables: {
@@ -587,6 +613,7 @@ const TokenRenderer = (props: {
     };
   });
 
+  const conditionsKey = token.conditions.join(",");
   React.useEffect(() => {
     const values: Record<string, any> = {
       text: token.label,
@@ -596,6 +623,7 @@ const TokenRenderer = (props: {
       tokenImageId: token.tokenImage?.id ?? null,
       tokenType: token.tokenType ?? "marker",
       isAlive: token.isAlive ?? true,
+      conditions: serializeConditions(token.conditions),
     };
 
     if (editingStateRef.radius === 0) {
@@ -626,6 +654,7 @@ const TokenRenderer = (props: {
     token.rotation,
     token.tokenType,
     token.isAlive,
+    conditionsKey,
   ]);
 
   const initialRadius = useStaticRef(() =>
@@ -877,8 +906,8 @@ const TokenRenderer = (props: {
     isHover && isMovable ? lighten(0.1, values.color) : values.color;
   const [hiddenLabelTokenIds] = useHiddenLabels();
   const textLabel = hiddenLabelTokenIds.has(props.id) ? null : values.text;
-  const tokenType = (values.tokenType as TokenType) ?? "marker";
   const isAlive = values.isAlive ?? true;
+  const tokenType = (values.tokenType as TokenType) ?? "marker";
   const typeRingColor = TOKEN_TYPE_COLORS[tokenType] ?? "#aa44ff";
   const baseOpacity = values.isVisibleForPlayers ? 1 : 0.5;
   const deadOpacity = isAlive ? baseOpacity : baseOpacity * 0.4;
@@ -942,11 +971,15 @@ const TokenRenderer = (props: {
             </mesh>
           </>
         )}
-        {/* Type-colored outer ring */}
+        {/* Contour coloré selon le type */}
         <mesh renderOrder={LayerRenderOrder.token}>
           <ringBufferGeometry
             attach="geometry"
-            args={[initialRadius * 1.0, initialRadius * 1.12, 128]}
+            args={[
+              initialRadius,
+              initialRadius * (1 + TOKEN_OUTLINE_WIDTH),
+              128,
+            ]}
           />
           <meshStandardMaterial
             attach="material"
@@ -984,7 +1017,11 @@ const TokenRenderer = (props: {
           <mesh renderOrder={LayerRenderOrder.outline}>
             <ringBufferGeometry
               attach="geometry"
-              args={[initialRadius * 1.12, initialRadius * 1.22, 128]}
+              args={[
+                initialRadius * (1 + TOKEN_OUTLINE_WIDTH),
+                initialRadius * (1.1 + TOKEN_OUTLINE_WIDTH),
+                128,
+              ]}
             />
             <meshStandardMaterial
               attach="material"
@@ -1054,6 +1091,10 @@ const TokenRenderer = (props: {
         {isDungeonMaster && !values.isVisibleForPlayers ? (
           <HiddenFromPlayersIndicator initialRadius={initialRadius} />
         ) : null}
+        <TokenConditionBadges
+          conditions={token.conditions}
+          initialRadius={initialRadius}
+        />
       </animated.group>
       {/* Text label — outside scaled group so scale doesn't affect font size */}
       {textLabel ? (
@@ -1067,8 +1108,7 @@ const TokenRenderer = (props: {
           <TokenLabel
             text={textLabel}
             position={undefined}
-            backgroundColor={resolvedImageUrl ? "#ffffffcc" : null}
-            fontSize={(columnWidth * sharedMapState.ratio) / 1300}
+            fontSize={(columnWidth * sharedMapState.ratio) / 1500}
           />
         </animated.group>
       ) : null}
@@ -1084,10 +1124,17 @@ function arrayEquals(a: unknown, b: unknown) {
   );
 }
 
+/**
+ * Étiquette sous le token : texte clair sur une plaque graphite translucide,
+ * lisible sur n'importe quelle carte sans écraser l'illustration.
+ */
+const TOKEN_LABEL_BACKGROUND = "#0b0b0c";
+const TOKEN_LABEL_BACKGROUND_OPACITY = 0.72;
+const TOKEN_LABEL_COLOR = "#f2f2f2";
+
 const TokenLabel = (props: {
   text: string;
   position?: [number, number, number];
-  backgroundColor: null | string;
   fontSize: number;
 }) => {
   const [blockBounds, setBlockBounds] = React.useState<
@@ -1101,9 +1148,6 @@ const TokenLabel = (props: {
   });
 
   useFrame(() => {
-    if (!props.backgroundColor) {
-      return;
-    }
     if (
       lastBlockBounds.current === null ||
       arrayEquals(
@@ -1121,7 +1165,7 @@ const TokenLabel = (props: {
 
   return (
     <>
-      {blockBounds && props.backgroundColor ? (
+      {blockBounds ? (
         <mesh
           renderOrder={LayerRenderOrder.tokenTextBackground}
           position={props.position}
@@ -1129,21 +1173,28 @@ const TokenLabel = (props: {
           <planeBufferGeometry
             attach="geometry"
             args={[
-              Math.abs(blockBounds[0]) + Math.abs(blockBounds[2]) + 0.01,
-              Math.abs(blockBounds[1]) + Math.abs(blockBounds[3]),
+              // marge horizontale d'environ un demi-caractère de chaque côté
+              Math.abs(blockBounds[0]) +
+                Math.abs(blockBounds[2]) +
+                props.fontSize * 0.9,
+              Math.abs(blockBounds[1]) +
+                Math.abs(blockBounds[3]) +
+                props.fontSize * 0.3,
               1,
             ]}
           />
-          <meshStandardMaterial
+          <meshBasicMaterial
             attach="material"
-            color={props.backgroundColor}
+            color={TOKEN_LABEL_BACKGROUND}
             transparent={true}
+            opacity={TOKEN_LABEL_BACKGROUND_OPACITY}
+            depthWrite={false}
           />
         </mesh>
       ) : null}
       <CanvasText
         fontSize={props.fontSize}
-        color="black"
+        color={TOKEN_LABEL_COLOR}
         font={buildUrl("/fonts/Roboto-Bold.ttf")}
         anchorX="center"
         anchorY="middle"
@@ -1153,6 +1204,56 @@ const TokenLabel = (props: {
       >
         {props.text}
       </CanvasText>
+    </>
+  );
+};
+
+/**
+ * Places des pastilles d'état autour du token (en degrés) : d'abord le bord
+ * gauche, du haut vers le bas, puis la droite sous l'indicateur « masqué ».
+ * Le bas reste libre pour le nom du token.
+ */
+const CONDITION_BADGE_ANGLES = [105, 150, 195, 240, 345, 300];
+
+/**
+ * États du token : des pastilles rondes posées sur son bord, à la même
+ * échelle que lui.
+ */
+const TokenConditionBadges = (props: {
+  conditions: ReadonlyArray<string>;
+  initialRadius: number;
+}) => {
+  const conditions = resolveConditions(props.conditions);
+  if (conditions.length === 0) return null;
+
+  const visible = conditions.slice(0, CONDITION_BADGE_ANGLES.length);
+  const size = props.initialRadius * 0.74;
+  const distance = props.initialRadius * 1.08;
+
+  return (
+    <>
+      {visible.map((condition, index) => {
+        const angle = (CONDITION_BADGE_ANGLES[index] / 180) * Math.PI;
+        return (
+          <mesh
+            key={condition.id}
+            position={[
+              Math.cos(angle) * distance,
+              Math.sin(angle) * distance,
+              0.01,
+            ]}
+            renderOrder={LayerRenderOrder.outline}
+          >
+            <planeBufferGeometry attach="geometry" args={[size, size]} />
+            <meshBasicMaterial
+              attach="material"
+              map={getConditionTexture(condition)}
+              transparent={true}
+              depthTest={false}
+            />
+          </mesh>
+        );
+      })}
     </>
   );
 };
@@ -2352,24 +2453,23 @@ const toYouTubeEmbedUrl = (url: string): string | null => {
 };
 
 const AnimationToggleButton = styled.button`
+  ${floatingSurface}
   position: absolute;
-  bottom: 16px;
-  right: 16px;
+  bottom: 12px;
+  right: 12px;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(0, 0, 0, 0.55);
-  color: white;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: ${ds.radii.md};
+  color: ${ds.colors.textSecondary};
   cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.15s;
+  transition: color ${ds.transitions.fast};
   &:hover {
-    opacity: 1;
+    color: ${ds.colors.textPrimary};
   }
 `;
 
@@ -2647,12 +2747,16 @@ export const MapView = (props: {
       {isAnimatedMedia && (
         <AnimationToggleButton
           onClick={() => setIsAnimating((v) => !v)}
-          title={isAnimating ? "Mettre en pause" : "Lancer l'animation"}
+          title={
+            isAnimating
+              ? "Mettre l'animation de la carte en pause"
+              : "Relancer l'animation de la carte"
+          }
         >
           {isAnimating ? (
-            <Icon.Pause boxSize="20px" />
+            <Icon.Pause boxSize="16px" />
           ) : (
-            <Icon.Play boxSize="20px" />
+            <Icon.Play boxSize="16px" />
           )}
         </AnimationToggleButton>
       )}

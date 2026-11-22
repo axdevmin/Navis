@@ -29,6 +29,8 @@ export type MapTokenEntity = {
   isAlive: boolean;
   tokenType: TokenType;
   imageUrl: string | null;
+  /** Identifiants des états (empoisonné, en feu…), voir token-conditions. */
+  conditions?: Array<string>;
   reference: null | {
     type: "note";
     id: string;

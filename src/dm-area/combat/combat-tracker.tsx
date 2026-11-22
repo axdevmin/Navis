@@ -1,4 +1,10 @@
 import * as React from "react";
+import {
+  ConditionIcon,
+  ConditionToggleGrid,
+  resolveConditions,
+} from "../../token-conditions";
+import { UpdateTokenContext } from "../../update-token-context";
 import graphql from "babel-plugin-relay/macro";
 import { useFragment, useMutation } from "relay-hooks";
 import styled from "@emotion/styled/macro";
@@ -46,6 +52,10 @@ const CombatTrackerMapFragment = graphql`
         tokenId
       }
     }
+    tokens {
+      id
+      conditions
+    }
   }
 `;
 
@@ -75,7 +85,9 @@ const NextTurnMutation = graphql`
 `;
 
 const PreviousTurnMutation = graphql`
-  mutation combatTracker_PreviousTurnMutation($input: CombatPreviousTurnInput!) {
+  mutation combatTracker_PreviousTurnMutation(
+    $input: CombatPreviousTurnInput!
+  ) {
     combatPreviousTurn(input: $input) {
       updatedMap {
         id
@@ -359,8 +371,7 @@ const AddFormFactionButton = styled.button<{
   border-radius: ${ds.radii.sm};
   cursor: pointer;
   font-size: 11px;
-  border: 1px solid
-    ${(p) => (p.isActive ? p.factionColor : ds.colors.border)};
+  border: 1px solid ${(p) => (p.isActive ? p.factionColor : ds.colors.border)};
   background: ${(p) => (p.isActive ? `${p.factionColor}33` : "transparent")};
 
   &:hover {
@@ -400,7 +411,9 @@ const Row = styled.div<{ isCurrent: boolean; isDragOver: boolean }>`
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  min-height: 40px;
+  /* marge à gauche pour les pastilles d'état autour de l'avatar */
+  padding: 6px 8px 6px 12px;
   border-radius: ${ds.radii.md};
   background: ${(p) => (p.isCurrent ? ds.colors.accentMuted : "transparent")};
   border: 1px solid
@@ -412,6 +425,11 @@ const Row = styled.div<{ isCurrent: boolean; isDragOver: boolean }>`
   &:hover {
     background: ${(p) =>
       p.isCurrent ? ds.colors.accentMuted : ds.colors.surfaceHover};
+  }
+
+  &:hover [data-row-actions] > button,
+  &:focus-within [data-row-actions] > button {
+    display: flex;
   }
 `;
 
@@ -435,6 +453,81 @@ const Avatar = styled.div<{ color: string; isDown: boolean }>`
     height: 100%;
     object-fit: cover;
   }
+`;
+
+/** Avatar et ses pastilles d'état ; cliquable pour régler les états. */
+const AvatarWrap = styled.button<{ isClickable: boolean }>`
+  position: relative;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: ${(p) => (p.isClickable ? "pointer" : "default")};
+
+  &:hover > div:first-of-type {
+    box-shadow: ${(p) =>
+      p.isClickable ? `0 0 0 2px ${ds.colors.borderStrong}` : "none"};
+  }
+`;
+
+/** Places des pastilles autour de l'avatar (en degrés), comme sur la carte. */
+const AVATAR_BADGE_ANGLES = [100, 145, 190, 235, 330, 285];
+
+/** Pastilles d'état disposées autour de l'avatar. */
+const AvatarConditionBadges = (props: {
+  conditions: ReadonlyArray<string>;
+}): React.ReactElement | null => {
+  const conditions = resolveConditions(props.conditions).slice(
+    0,
+    AVATAR_BADGE_ANGLES.length
+  );
+  if (conditions.length === 0) return null;
+  const size = 14;
+  const distance = 20;
+  return (
+    <>
+      {conditions.map((condition, index) => {
+        // même disposition que sur la carte
+        const angle = (AVATAR_BADGE_ANGLES[index] / 180) * Math.PI;
+        const x = 14 + Math.cos(angle) * distance - size / 2;
+        const y = 14 - Math.sin(angle) * distance - size / 2;
+        return (
+          <AvatarBadge
+            key={condition.id}
+            title={condition.label}
+            style={{
+              left: x,
+              top: y,
+              width: size,
+              height: size,
+              background: condition.color,
+            }}
+          >
+            <ConditionIcon condition={condition} size={10} color="#141416" />
+          </AvatarBadge>
+        );
+      })}
+    </>
+  );
+};
+
+const AvatarBadge = styled.span`
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(11, 11, 12, 0.85);
+  pointer-events: none;
+`;
+
+const ConditionTray = styled.div`
+  padding: 4px 8px 8px;
+  margin-top: -2px;
 `;
 
 const Name = styled.span<{ isDown: boolean; isEditable: boolean }>`
@@ -478,30 +571,12 @@ const InitiativeBadge = styled.span`
   text-align: right;
 `;
 
-const TokenLinkBadge = styled.span`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: ${ds.colors.accent};
-  opacity: 0.8;
-
-  svg {
-    stroke: currentColor;
-  }
-`;
-
-const RowActions = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 2px;
-`;
-
 const RowActionButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   border: none;
   border-radius: ${ds.radii.sm};
   background: transparent;
@@ -511,6 +586,28 @@ const RowActionButton = styled.button`
   &:hover {
     background: ${ds.colors.surfaceActive};
     color: ${ds.colors.textPrimary};
+  }
+`;
+
+/**
+ * Les actions d'une ligne n'apparaissent qu'au survol (ou au clavier) : au
+ * repos, une ligne ne montre que l'essentiel. Un état qui compte, comme
+ * « masqué aux joueurs », reste affiché en permanence.
+ */
+const RowActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: -4px -4px -4px 0;
+
+  > button:not([data-persistent]) {
+    display: none;
+  }
+
+  @media (hover: none) {
+    > button:not([data-persistent]) {
+      display: flex;
+    }
   }
 `;
 
@@ -592,16 +689,20 @@ export const CombatTracker = (props: {
   const [newFaction, setNewFaction] = React.useState<CombatFaction>("neutral");
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editValue, setEditValue] = React.useState("");
+  // participant dont on règle les états (une rangée d'icônes sous sa ligne)
+  const [conditionsForId, setConditionsForId] = React.useState<string | null>(
+    null
+  );
+  const updateToken = React.useContext(UpdateTokenContext);
+  const conditionsByTokenId = new Map(
+    map.tokens.map((token) => [token.id, token.conditions] as const)
+  );
 
-  const [nextTurn] = useMutation<combatTracker_NextTurnMutation>(
-    NextTurnMutation
-  );
-  const [previousTurn] = useMutation<combatTracker_PreviousTurnMutation>(
-    PreviousTurnMutation
-  );
-  const [reorder] = useMutation<combatTracker_ReorderMutation>(
-    ReorderMutation
-  );
+  const [nextTurn] =
+    useMutation<combatTracker_NextTurnMutation>(NextTurnMutation);
+  const [previousTurn] =
+    useMutation<combatTracker_PreviousTurnMutation>(PreviousTurnMutation);
+  const [reorder] = useMutation<combatTracker_ReorderMutation>(ReorderMutation);
   const [removeParticipant] =
     useMutation<combatTracker_RemoveParticipantMutation>(
       RemoveParticipantMutation
@@ -634,8 +735,7 @@ export const CombatTracker = (props: {
       );
       if (!row) return;
       const rowTopInList = row.offsetTop - list.offsetTop;
-      const target =
-        rowTopInList - (list.clientHeight - row.clientHeight) / 2;
+      const target = rowTopInList - (list.clientHeight - row.clientHeight) / 2;
       list.scrollTo({
         top: Math.max(0, Math.min(target, list.scrollHeight)),
         behavior: "smooth",
@@ -736,7 +836,7 @@ export const CombatTracker = (props: {
       <Header onClick={() => setCollapsed((v) => !v)}>
         <Icon.Users boxSize="16px" />
         <HeaderTitle>Combat</HeaderTitle>
-        <RoundBadge>Round {combat.round}</RoundBadge>
+        <RoundBadge>Manche {combat.round}</RoundBadge>
         {collapsed ? (
           <Icon.ChevronLeft boxSize="16px" />
         ) : (
@@ -869,145 +969,197 @@ export const CombatTracker = (props: {
               <EmptyState>Aucun participant</EmptyState>
             ) : (
               participants.map((participant) => {
-                const isCurrent = participant.id === combat.currentParticipantId;
+                const isCurrent =
+                  participant.id === combat.currentParticipantId;
                 const faction = getFactionMeta(participant.faction);
+                const tokenId = participant.tokenId;
+                const conditions =
+                  (tokenId ? conditionsByTokenId.get(tokenId) : null) ?? [];
+                const canEditConditions = props.isEditable && tokenId != null;
+                const isConditionsOpen =
+                  canEditConditions && conditionsForId === participant.id;
                 return (
-                  <Row
-                    key={participant.id}
-                    data-participant-id={participant.id}
-                    isCurrent={isCurrent}
-                    isDragOver={dragOverId === participant.id}
-                    draggable={props.isEditable}
-                    onDragStart={(ev) => {
-                      ev.dataTransfer.setData(COMBAT_DRAG_TYPE, participant.id);
-                      ev.dataTransfer.effectAllowed = "move";
-                    }}
-                    onDragOver={(ev) => {
-                      if (ev.dataTransfer.types.includes(COMBAT_DRAG_TYPE)) {
+                  <React.Fragment key={participant.id}>
+                    <Row
+                      data-participant-id={participant.id}
+                      isCurrent={isCurrent}
+                      isDragOver={dragOverId === participant.id}
+                      draggable={props.isEditable}
+                      onDragStart={(ev) => {
+                        ev.dataTransfer.setData(
+                          COMBAT_DRAG_TYPE,
+                          participant.id
+                        );
+                        ev.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragOver={(ev) => {
+                        if (ev.dataTransfer.types.includes(COMBAT_DRAG_TYPE)) {
+                          ev.preventDefault();
+                          setDragOverId(participant.id);
+                        }
+                      }}
+                      onDragLeave={() => {
+                        setDragOverId((current) =>
+                          current === participant.id ? null : current
+                        );
+                      }}
+                      onDrop={(ev) => {
+                        const draggedId =
+                          ev.dataTransfer.getData(COMBAT_DRAG_TYPE);
+                        setDragOverId(null);
+                        if (!draggedId) return;
                         ev.preventDefault();
-                        setDragOverId(participant.id);
-                      }
-                    }}
-                    onDragLeave={() => {
-                      setDragOverId((current) =>
-                        current === participant.id ? null : current
-                      );
-                    }}
-                    onDrop={(ev) => {
-                      const draggedId = ev.dataTransfer.getData(
-                        COMBAT_DRAG_TYPE
-                      );
-                      setDragOverId(null);
-                      if (!draggedId) return;
-                      ev.preventDefault();
-                      ev.stopPropagation();
-                      moveParticipant(draggedId, participant.id);
-                    }}
-                  >
-                    <Avatar color={participant.color} isDown={participant.isDown}>
-                      {participant.imageUrl ? (
-                        <img src={participant.imageUrl} alt="" />
-                      ) : (
-                        faction.emoji
-                      )}
-                    </Avatar>
-                    {props.isEditable && editingId === participant.id ? (
-                      <NameInput
-                        autoFocus
-                        value={editValue}
-                        onChange={(ev) => setEditValue(ev.target.value)}
-                        onClick={(ev) => ev.stopPropagation()}
-                        onBlur={() => commitRename(participant.id)}
-                        onKeyDown={(ev) => {
-                          if (ev.key === "Enter") {
-                            ev.preventDefault();
-                            commitRename(participant.id);
-                          } else if (ev.key === "Escape") {
-                            setEditingId(null);
-                          }
-                        }}
-                      />
-                    ) : (
-                      <Name
-                        isDown={participant.isDown}
-                        isEditable={props.isEditable}
-                        title={props.isEditable ? "Cliquer pour renommer" : undefined}
+                        ev.stopPropagation();
+                        moveParticipant(draggedId, participant.id);
+                      }}
+                    >
+                      <AvatarWrap
+                        type="button"
+                        tabIndex={canEditConditions ? undefined : -1}
+                        isClickable={canEditConditions}
+                        title={canEditConditions ? "États" : undefined}
+                        aria-label={
+                          canEditConditions
+                            ? `États de ${participant.name}`
+                            : undefined
+                        }
+                        aria-expanded={
+                          canEditConditions ? isConditionsOpen : undefined
+                        }
                         onClick={() => {
-                          if (!props.isEditable) return;
-                          setEditingId(participant.id);
-                          setEditValue(participant.name);
+                          if (!canEditConditions) return;
+                          setConditionsForId(
+                            isConditionsOpen ? null : participant.id
+                          );
                         }}
                       >
-                        {participant.name}
-                      </Name>
-                    )}
-                    {props.isEditable && participant.tokenId ? (
-                      <TokenLinkBadge title="Lié à un token sur la carte">
-                        <Icon.Target boxSize="12px" />
-                      </TokenLinkBadge>
-                    ) : null}
-                    <InitiativeBadge>{participant.initiative}</InitiativeBadge>
-                    {props.isEditable ? (
-                      <RowActions>
-                        <RowActionButton
-                          title={participant.isDown ? "Relever" : "Mettre K.O."}
-                          onClick={() =>
-                            updateParticipant({
-                              variables: {
-                                input: {
-                                  mapId: map.id,
-                                  participantId: participant.id,
-                                  isDown: !participant.isDown,
-                                },
-                              },
-                            })
-                          }
+                        <Avatar
+                          color={participant.color}
+                          isDown={participant.isDown}
                         >
-                          <Icon.Skull boxSize="14px" />
-                        </RowActionButton>
-                        <RowActionButton
-                          title={
-                            participant.isVisibleForPlayers
-                              ? "Masquer aux joueurs"
-                              : "Montrer aux joueurs"
-                          }
-                          onClick={() =>
-                            updateParticipant({
-                              variables: {
-                                input: {
-                                  mapId: map.id,
-                                  participantId: participant.id,
-                                  isVisibleForPlayers:
-                                    !participant.isVisibleForPlayers,
-                                },
-                              },
-                            })
-                          }
-                        >
-                          {participant.isVisibleForPlayers ? (
-                            <Icon.Eye boxSize="13px" />
+                          {participant.imageUrl ? (
+                            <img src={participant.imageUrl} alt="" />
                           ) : (
-                            <Icon.EyeOff boxSize="13px" />
+                            faction.emoji
                           )}
-                        </RowActionButton>
-                        <RowActionButton
-                          title="Retirer du combat"
-                          onClick={() =>
-                            removeParticipant({
-                              variables: {
-                                input: {
-                                  mapId: map.id,
-                                  participantId: participant.id,
-                                },
-                              },
-                            })
+                        </Avatar>
+                        <AvatarConditionBadges conditions={conditions} />
+                      </AvatarWrap>
+                      {props.isEditable && editingId === participant.id ? (
+                        <NameInput
+                          autoFocus
+                          value={editValue}
+                          onChange={(ev) => setEditValue(ev.target.value)}
+                          onClick={(ev) => ev.stopPropagation()}
+                          onBlur={() => commitRename(participant.id)}
+                          onKeyDown={(ev) => {
+                            if (ev.key === "Enter") {
+                              ev.preventDefault();
+                              commitRename(participant.id);
+                            } else if (ev.key === "Escape") {
+                              setEditingId(null);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <Name
+                          isDown={participant.isDown}
+                          isEditable={props.isEditable}
+                          title={
+                            props.isEditable
+                              ? "Cliquer pour renommer"
+                              : undefined
                           }
+                          onClick={() => {
+                            if (!props.isEditable) return;
+                            setEditingId(participant.id);
+                            setEditValue(participant.name);
+                          }}
                         >
-                          <Icon.X boxSize="13px" />
-                        </RowActionButton>
-                      </RowActions>
+                          {participant.name}
+                        </Name>
+                      )}
+                      <InitiativeBadge>
+                        {participant.initiative}
+                      </InitiativeBadge>
+                      {props.isEditable ? (
+                        <RowActions data-row-actions>
+                          <RowActionButton
+                            title={
+                              participant.isDown ? "Relever" : "Mettre K.O."
+                            }
+                            onClick={() =>
+                              updateParticipant({
+                                variables: {
+                                  input: {
+                                    mapId: map.id,
+                                    participantId: participant.id,
+                                    isDown: !participant.isDown,
+                                  },
+                                },
+                              })
+                            }
+                          >
+                            <Icon.Skull boxSize="14px" />
+                          </RowActionButton>
+                          <RowActionButton
+                            data-persistent={
+                              participant.isVisibleForPlayers ? undefined : true
+                            }
+                            title={
+                              participant.isVisibleForPlayers
+                                ? "Masquer aux joueurs"
+                                : "Montrer aux joueurs"
+                            }
+                            onClick={() =>
+                              updateParticipant({
+                                variables: {
+                                  input: {
+                                    mapId: map.id,
+                                    participantId: participant.id,
+                                    isVisibleForPlayers:
+                                      !participant.isVisibleForPlayers,
+                                  },
+                                },
+                              })
+                            }
+                          >
+                            {participant.isVisibleForPlayers ? (
+                              <Icon.Eye boxSize="13px" />
+                            ) : (
+                              <Icon.EyeOff boxSize="13px" />
+                            )}
+                          </RowActionButton>
+                          <RowActionButton
+                            title="Retirer du combat"
+                            onClick={() =>
+                              removeParticipant({
+                                variables: {
+                                  input: {
+                                    mapId: map.id,
+                                    participantId: participant.id,
+                                  },
+                                },
+                              })
+                            }
+                          >
+                            <Icon.X boxSize="13px" />
+                          </RowActionButton>
+                        </RowActions>
+                      ) : null}
+                    </Row>
+                    {isConditionsOpen && tokenId ? (
+                      <ConditionTray>
+                        <ConditionToggleGrid
+                          columns={7}
+                          value={conditions}
+                          onChange={(next) =>
+                            updateToken(tokenId, { conditions: next })
+                          }
+                        />
+                      </ConditionTray>
                     ) : null}
-                  </Row>
+                  </React.Fragment>
                 );
               })
             )}

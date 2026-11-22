@@ -49,6 +49,8 @@ export const ChatToggleButton: React.FC<{
   return (
     <IconButton
       onClick={onClick}
+      title={hasUnreadMessages ? "Chat : nouveaux messages" : "Chat et dés"}
+      aria-label="Ouvrir ou fermer le chat"
       style={{ pointerEvents: "all" }}
       colorVariant={hasUnreadMessages ? "accent" : undefined}
     >

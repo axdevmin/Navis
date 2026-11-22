@@ -13,6 +13,9 @@ import { applyAsyncIterableIteratorToSink } from "@n1ru4l/push-pull-async-iterab
 import { applyLiveQueryJSONDiffPatch } from "@n1ru4l/graphql-live-query-patch-jsondiffpatch";
 import { Variables } from "react-relay";
 
+/** Les réponses GraphQL sont du JSON pur : une copie JSON suffit. */
+const clonePayload = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+
 export const createEnvironment = (socket: IOSocket) => {
   const networkInterface = createSocketIOGraphQLClient<GraphQLResponse>(socket);
 
@@ -32,7 +35,16 @@ export const createEnvironment = (socket: IOSocket) => {
             operationName: name,
           })
         ),
-        sink
+        {
+          // Les correctifs « en direct » s'appliquent sur le résultat
+          // précédent, modifié sur place. Relay gèle (en développement) ce
+          // qu'on lui transmet : on lui passe donc une copie, sinon le
+          // correctif suivant échoue dès qu'une liste s'allonge (« Cannot add
+          // property 3, object is not extensible »).
+          next: (value) => sink.next(clonePayload(value)),
+          error: (error) => sink.error(error as Error),
+          complete: () => sink.complete(),
+        }
       )
     );
   };
