@@ -15,6 +15,7 @@ import {
   MapTokenEntity,
   TokenType,
   WeatherSettings,
+  TimeOfDay,
   MapRoom,
   WeatherType,
 } from "../../maps";
@@ -64,6 +65,7 @@ const GraphQLTokenTypeEnum = t.enumType<TokenType>({
     { name: "object", value: "object" as const },
     { name: "hazard", value: "hazard" as const },
     { name: "marker", value: "marker" as const },
+    { name: "light", value: "light" as const },
   ],
 });
 
@@ -84,13 +86,14 @@ const GraphQLWeatherTypeEnum = t.enumType<WeatherType>({
   ],
 });
 
-const GraphQLTimeOfDayEnum = t.enumType<"morning" | "day" | "night">({
+const GraphQLTimeOfDayEnum = t.enumType<TimeOfDay>({
   name: "TimeOfDay",
   description: "Moment de la journée, indépendant de la météo.",
   values: [
     { name: "morning", value: "morning" as const },
     { name: "day", value: "day" as const },
     { name: "night", value: "night" as const },
+    { name: "indoor", value: "indoor" as const },
   ],
 });
 
@@ -173,6 +176,35 @@ const GraphQLMapRoomType = t.objectType<MapRoom>({
       type: t.NonNull(t.List(t.NonNull(t.Float))),
     }),
     t.field({ name: "hasWeather", type: t.NonNull(t.Boolean) }),
+    t.field({
+      name: "hasLight",
+      description: "La pièce est éclairée de l'intérieur.",
+      type: t.NonNull(t.Boolean),
+      resolve: (source) => source.hasLight === true,
+    }),
+  ],
+});
+
+const GraphQLMapLightType = t.objectType<{
+  id: string;
+  tokenId: string;
+  x: number;
+  y: number;
+  lightType: string;
+  radius: number;
+}>({
+  name: "MapLight",
+  description:
+    "Une source de lumière portée par un token (position en pixels de l'image, portée en cases).",
+  fields: () => [
+    // identifiant distinct du token : Relay fusionnerait sinon les deux
+    // objets (et la portée écraserait la taille du token, ou l'inverse)
+    t.field({ name: "id", type: t.NonNull(t.ID) }),
+    t.field({ name: "tokenId", type: t.NonNull(t.ID) }),
+    t.field({ name: "x", type: t.NonNull(t.Float) }),
+    t.field({ name: "y", type: t.NonNull(t.Float) }),
+    t.field({ name: "lightType", type: t.NonNull(t.String) }),
+    t.field({ name: "radius", type: t.NonNull(t.Float) }),
   ],
 });
 
@@ -183,6 +215,7 @@ const GraphQLMapRoomInputType = t.inputObjectType({
     name: { type: t.NonNullInput(t.String) },
     points: { type: t.NonNullInput(t.ListInput(t.NonNullInput(t.Float))) },
     hasWeather: { type: t.NonNullInput(t.Boolean) },
+    hasLight: { type: t.Boolean },
   }),
 });
 
@@ -429,6 +462,8 @@ const GraphQLMapTokenAddManyTokenInput = t.inputObjectType({
     tokenType: t.arg(GraphQLTokenTypeEnum),
     isAlive: t.arg(t.Boolean),
     imageUrl: t.arg(t.String),
+    lightType: t.arg(t.String),
+    lightRadius: t.arg(t.Float),
   }),
 });
 
@@ -844,6 +879,7 @@ export const mutationFields = [
               name: room.name,
               points: room.points,
               hasWeather: room.hasWeather,
+              hasLight: room.hasLight === true,
             })),
         }),
         context
@@ -1132,6 +1168,18 @@ const GraphQLMapTokenType = t.objectType<MapTokenEntity>({
       resolve: (source) => source.conditions ?? [],
     }),
     t.field({
+      name: "lightType",
+      description: "Lumière portée par le token (null : aucune).",
+      type: t.String,
+      resolve: (source) => source.lightType ?? null,
+    }),
+    t.field({
+      name: "lightRadius",
+      description: "Portée de la lumière, en cases.",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.lightRadius ?? 4,
+    }),
+    t.field({
       name: "imageUrl",
       type: t.String,
       resolve: (source) => source.imageUrl ?? null,
@@ -1244,12 +1292,37 @@ const GraphQLMapType = t.objectType<MapEntity>({
     t.field({
       name: "rooms",
       description:
-        "Rooms drawn by the DM. Players only receive the ones sheltered from the weather, which they need to mask it; the others would reveal the layout of unexplored areas.",
+        "Rooms drawn by the DM. Players only receive the ones sheltered from the weather or lit, which they need to render them; the others would reveal the layout of unexplored areas.",
       type: t.NonNull(t.List(t.NonNull(GraphQLMapRoomType))),
       resolve: (source, _, context) =>
         context.session.role === "admin"
           ? source.rooms ?? []
-          : (source.rooms ?? []).filter((room) => room.hasWeather === false),
+          : (source.rooms ?? []).filter(
+              (room) => room.hasWeather === false || room.hasLight === true
+            ),
+    }),
+    t.field({
+      name: "lights",
+      description:
+        "Sources de lumière des tokens. Les joueurs reçoivent celles des tokens qu'ils voient et des tokens « lumière » (cheminée, feu…), invisibles mais dont la lueur se voit.",
+      type: t.NonNull(t.List(t.NonNull(GraphQLMapLightType))),
+      resolve: (source, _, context) =>
+        (source.tokens ?? [])
+          .filter(
+            (token) =>
+              token.lightType != null &&
+              (context.session.role === "admin" ||
+                token.isVisibleForPlayers ||
+                token.tokenType === "light")
+          )
+          .map((token) => ({
+            id: `MapLight:${token.id}`,
+            tokenId: token.id,
+            x: token.x,
+            y: token.y,
+            lightType: token.lightType as string,
+            radius: token.lightRadius ?? 4,
+          })),
     }),
     t.field({
       name: "combat",

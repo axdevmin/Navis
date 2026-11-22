@@ -485,6 +485,8 @@ const Content = ({
                           tokenType: preset.tokenType,
                           isAlive: true,
                           imageUrl: preset.imageUrl,
+                          lightType: preset.lightType ?? null,
+                          lightRadius: preset.lightRadius ?? null,
                         },
                       ],
                     },

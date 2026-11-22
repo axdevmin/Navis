@@ -51,6 +51,17 @@ describe("normalizeWeatherSettings", () => {
     expect(settings.windAngle).toBe(-20);
   });
 
+  it("accepte le moment Intérieur et refuse un moment inconnu", () => {
+    expect(
+      normalizeWeatherSettings({ type: "none", timeOfDay: "indoor" } as any)
+        .timeOfDay
+    ).toBe("indoor");
+    expect(
+      normalizeWeatherSettings({ type: "none", timeOfDay: "dusk" } as any)
+        .timeOfDay
+    ).toBe("day");
+  });
+
   it("borne les valeurs hors limites", () => {
     const settings = normalizeWeatherSettings({
       type: "rain",

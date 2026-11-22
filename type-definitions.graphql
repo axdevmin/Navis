@@ -336,9 +336,14 @@ type Map {
   weatherSettings: WeatherSettings!
 
   """
-  Rooms drawn by the DM. Players only receive the ones sheltered from the weather, which they need to mask it; the others would reveal the layout of unexplored areas.
+  Rooms drawn by the DM. Players only receive the ones sheltered from the weather or lit, which they need to render them; the others would reveal the layout of unexplored areas.
   """
   rooms: [MapRoom!]!
+
+  """
+  Sources de lumière des tokens. Les joueurs reçoivent celles des tokens qu'ils voient et des tokens « lumière » (cheminée, feu…), invisibles mais dont la lueur se voit.
+  """
+  lights: [MapLight!]!
 
   """
   The combat tracker state of the map.
@@ -377,6 +382,16 @@ type MapToken {
   Identifiants des états posés sur le token.
   """
   conditions: [String!]!
+
+  """
+  Lumière portée par le token (null : aucune).
+  """
+  lightType: String
+
+  """
+  Portée de la lumière, en cases.
+  """
+  lightRadius: Float!
   imageUrl: String
 }
 
@@ -389,6 +404,7 @@ enum TokenType {
   object
   hazard
   marker
+  light
 }
 
 """
@@ -454,6 +470,7 @@ enum TimeOfDay {
   morning
   day
   night
+  indoor
 }
 
 """
@@ -468,6 +485,23 @@ type MapRoom {
   """
   points: [Float!]!
   hasWeather: Boolean!
+
+  """
+  La pièce est éclairée de l'intérieur.
+  """
+  hasLight: Boolean!
+}
+
+"""
+Une source de lumière portée par un token (position en pixels de l'image, portée en cases).
+"""
+type MapLight {
+  id: ID!
+  tokenId: ID!
+  x: Float!
+  y: Float!
+  lightType: String!
+  radius: Float!
 }
 
 """
@@ -892,6 +926,8 @@ input MapTokenAddManyTokenInput {
   tokenType: TokenType
   isAlive: Boolean
   imageUrl: String
+  lightType: String
+  lightRadius: Float
 }
 
 type MapImageRequestUploadResult {
@@ -1027,6 +1063,7 @@ input MapRoomInput {
   name: String!
   points: [Float!]!
   hasWeather: Boolean!
+  hasLight: Boolean
 }
 
 input MapPingInput {

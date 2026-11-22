@@ -28,6 +28,7 @@ import { useStaticRef } from "./hooks/use-static-ref";
 import { buildUrl } from "./public-url";
 import { CanvasText, CanvasTextRef } from "./canvas-text";
 import {
+  LIGHT_BADGE,
   getConditionTexture,
   parseConditions,
   resolveConditions,
@@ -76,10 +77,21 @@ import { mapView_MapPingRenderer_MapFragment$key } from "./__generated__/mapView
 import { mapView_MapPingSubscription } from "./__generated__/mapView_MapPingSubscription.graphql";
 import { UpdateTokenContext } from "./update-token-context";
 import { IsDungeonMasterContext } from "./is-dungeon-master-context";
-import { WeatherSystem, hasTimeOfDayEffect } from "./weather-system";
+import {
+  TimeOfDaySystem,
+  WeatherSystem,
+  hasTimeOfDayEffect,
+} from "./weather-system";
+import {
+  MapLighting,
+  MapLightingContext,
+  SceneLight,
+  getLightSource,
+  liveLightPositions,
+} from "./light-sources";
 import { RenderDemand, RenderScheduler } from "./render-scheduler";
 import { tokenSnapshots } from "./undo-history";
-import { WeatherShelter } from "./map-rooms";
+import { WeatherShelter, roomVertices } from "./map-rooms";
 import type { WeatherSettings } from "./weather-types";
 import { DiceRollRenderer } from "./dice-roll-renderer";
 
@@ -92,6 +104,7 @@ const TOKEN_TYPE_COLORS: Record<TokenType, string> = {
   object: "#ffaa33",
   hazard: "#ff6633",
   marker: "#aa44ff",
+  light: "#ffb347",
 };
 /** Épaisseur du contour, en fraction du rayon du token. */
 const TOKEN_OUTLINE_WIDTH = 0.12;
@@ -264,6 +277,8 @@ const TokenRendererMapTokenFragment = graphql`
     isAlive
     imageUrl
     conditions
+    lightType
+    lightRadius
     tokenImage {
       id
       title
@@ -311,6 +326,8 @@ const TokenRenderer = (props: {
       tokenType: token.tokenType,
       isAlive: token.isAlive,
       conditions: [...token.conditions],
+      lightType: token.lightType ?? null,
+      lightRadius: token.lightRadius,
     });
   });
   React.useEffect(
@@ -557,6 +574,7 @@ const TokenRenderer = (props: {
           Objet: "object",
           Danger: "hazard",
           Marqueur: "marker",
+          Lumière: "light",
         },
         onChange: (tokenType: TokenType, _, { initial, fromPanel }) => {
           if (initial || !fromPanel) {
@@ -575,6 +593,31 @@ const TokenRenderer = (props: {
             return;
           }
           updateToken(props.id, { isAlive });
+        },
+        transient: false,
+      },
+      // lumière portée : identifiant (voir light-sources), "" pour aucune
+      lightType: {
+        type: LevaInputs.STRING,
+        label: "Lumière",
+        value: token.lightType ?? "",
+        onChange: (value: string, _, { initial, fromPanel }) => {
+          if (initial || !fromPanel) {
+            return;
+          }
+          updateToken(props.id, { lightType: value === "" ? null : value });
+        },
+        transient: false,
+      },
+      lightRadius: {
+        type: LevaInputs.NUMBER,
+        label: "Portée",
+        value: token.lightRadius,
+        onChange: (lightRadius: number, _, { initial, fromPanel }) => {
+          if (initial || !fromPanel) {
+            return;
+          }
+          updateToken(props.id, { lightRadius });
         },
         transient: false,
       },
@@ -630,6 +673,8 @@ const TokenRenderer = (props: {
       tokenType: token.tokenType ?? "marker",
       isAlive: token.isAlive ?? true,
       conditions: serializeConditions(token.conditions),
+      lightType: token.lightType ?? "",
+      lightRadius: token.lightRadius,
     };
 
     if (editingStateRef.radius === 0) {
@@ -661,6 +706,8 @@ const TokenRenderer = (props: {
     token.tokenType,
     token.isAlive,
     conditionsKey,
+    token.lightType,
+    token.lightRadius,
   ]);
 
   const initialRadius = useStaticRef(() =>
@@ -942,6 +989,20 @@ const TokenRenderer = (props: {
     });
   });
 
+  // Une lumière portée suit le token en direct pendant qu'on le déplace.
+  const carriesLight = token.lightType != null;
+  useFrame(() => {
+    if (!carriesLight) return;
+    const [x, y] = animatedProps.position.get() as [number, number, number];
+    liveLightPositions.set(props.id, [x, y]);
+  });
+  React.useEffect(() => {
+    if (!carriesLight) liveLightPositions.delete(props.id);
+    return () => {
+      liveLightPositions.delete(props.id);
+    };
+  }, [carriesLight, props.id]);
+
   const isUnderFog = React.useMemo(() => {
     if (isDungeonMaster) return false;
     const fogCanvas = sharedMapState.fogCanvas;
@@ -1122,6 +1183,8 @@ const TokenRenderer = (props: {
         ) : null}
         <TokenConditionBadges
           conditions={token.conditions}
+          // un token « Lumière » est lui-même la lumière : pas de pastille
+          carriesLight={carriesLight && token.tokenType !== "light"}
           initialRadius={initialRadius}
         />
       </animated.group>
@@ -1250,9 +1313,13 @@ const CONDITION_BADGE_ANGLES = [105, 150, 195, 240, 345, 300];
  */
 const TokenConditionBadges = (props: {
   conditions: ReadonlyArray<string>;
+  carriesLight: boolean;
   initialRadius: number;
 }) => {
-  const conditions = resolveConditions(props.conditions);
+  const conditions = [
+    ...(props.carriesLight ? [LIGHT_BADGE] : []),
+    ...resolveConditions(props.conditions),
+  ];
   if (conditions.length === 0) return null;
 
   const visible = conditions.slice(0, CONDITION_BADGE_ANGLES.length);
@@ -2013,6 +2080,18 @@ const MapViewRendererFragment = graphql`
       id
       points
       hasWeather
+      hasLight
+    }
+    lights {
+      id
+      tokenId
+      x
+      y
+      lightType
+      radius
+    }
+    grid {
+      columnWidth
     }
     ...mapView_MapRendererFragment
   }
@@ -2397,6 +2476,42 @@ const MapViewRenderer = (props: {
     },
   });
 
+  // Lumières dans le repère de la scène (portée : cases de la grille).
+  const cellSize = map.grid?.columnWidth ?? 50;
+  const lightsSignature = map.lights
+    .map((l) => `${l.id}:${l.x}:${l.y}:${l.lightType}:${l.radius}`)
+    .join("|");
+  const litRoomsSignature = map.rooms
+    .filter((room) => room.hasLight)
+    .map((room) => room.id + room.points.join(","))
+    .join("|");
+  const lighting = React.useMemo<MapLighting>(() => {
+    const helper = toolContext.helper;
+    const lights: Array<SceneLight> = [];
+    for (const light of map.lights) {
+      const source = getLightSource(light.lightType);
+      if (!source) continue;
+      const [x, y] = helper.imageCoordinatesToThreePoint([light.x, light.y]);
+      lights.push({
+        // les positions en direct sont rangées par token
+        id: light.tokenId,
+        x,
+        y,
+        radius: helper.size.fromImageToThree(light.radius * cellSize),
+        source,
+      });
+    }
+    const litRooms = map.rooms
+      .filter((room) => room.hasLight)
+      .map((room) =>
+        roomVertices(room.points).map((vertex) =>
+          helper.imageCoordinatesToThreePoint(vertex)
+        )
+      );
+    return { lights, litRooms };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolContext, lightsSignature, litRoomsSignature, cellSize]);
+
   return (
     <SharedMapState.Provider value={toolContext}>
       <TokensAboveWeatherContext.Provider
@@ -2433,19 +2548,32 @@ const MapViewRenderer = (props: {
               handlerContext={toolContext}
             />
           ) : null}
-          <WeatherShelter
-            rooms={map.rooms}
-            toScene={toolContext.helper.imageCoordinatesToThreePoint}
-            renderOrder={LayerRenderOrder.weather - 0.5}
-          >
-            <WeatherSystem
-              config={props.weatherConfig}
-              dimensions={{
-                width: dimensions.width,
-                height: dimensions.height,
-              }}
-            />
-          </WeatherShelter>
+          <MapLightingContext.Provider value={lighting}>
+            {/* le moment de la journée n'est pas coupé par les pièces
+                abritées : la nuit tombe aussi à l'intérieur */}
+            <group renderOrder={LayerRenderOrder.weather}>
+              <TimeOfDaySystem
+                config={props.weatherConfig}
+                dimensions={{
+                  width: dimensions.width,
+                  height: dimensions.height,
+                }}
+              />
+            </group>
+            <WeatherShelter
+              rooms={map.rooms}
+              toScene={toolContext.helper.imageCoordinatesToThreePoint}
+              renderOrder={LayerRenderOrder.weather - 0.5}
+            >
+              <WeatherSystem
+                config={props.weatherConfig}
+                dimensions={{
+                  width: dimensions.width,
+                  height: dimensions.height,
+                }}
+              />
+            </WeatherShelter>
+          </MapLightingContext.Provider>
         </Plane>
         <DiceRollRenderer mapId={props.mapId} />
       </TokensAboveWeatherContext.Provider>
@@ -2530,6 +2658,9 @@ const MapFragment = graphql`
       timeIntensity
       lightAngle
       fireflies
+    }
+    lights {
+      id
     }
     ...mapView_MapViewRendererFragment
   }
@@ -2680,7 +2811,9 @@ export const MapView = (props: {
   const weatherType = weatherSettings?.type ?? "none";
   const isWeatherAnimated =
     weatherType !== "none" ||
-    (weatherSettings !== null && hasTimeOfDayEffect(weatherSettings));
+    (weatherSettings !== null && hasTimeOfDayEffect(weatherSettings)) ||
+    // les flammes vacillent
+    map.lights.length > 0;
   const renderDemand: RenderDemand =
     isWeatherAnimated || (isAnimatedMedia && isAnimating)
       ? "continuous"

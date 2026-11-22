@@ -41,6 +41,8 @@ const prepareToken = (token: { [key: string]: unknown }) => {
     token.imageUrl = null;
   }
   token.conditions = sanitizeConditions(token.conditions) ?? [];
+  token.lightType = sanitizeLightType(token.lightType);
+  token.lightRadius = sanitizeLightRadius(token.lightRadius) ?? 4;
 
   return token;
 };
@@ -72,7 +74,32 @@ export type TokenType =
   | "creature"
   | "object"
   | "hazard"
-  | "marker";
+  | "marker"
+  /** Source de lumière seule (cheminée, feu…) : invisible des joueurs. */
+  | "light";
+
+/** Sources de lumière connues ; le rendu (couleur, vacillement) est côté interface. */
+export const LIGHT_TYPES = [
+  "torch",
+  "candle",
+  "campfire",
+  "fireplace",
+  "lantern",
+  "magic",
+] as const;
+export type LightType = typeof LIGHT_TYPES[number];
+
+export const sanitizeLightType = (value: unknown): LightType | null =>
+  typeof value === "string" &&
+  (LIGHT_TYPES as readonly string[]).includes(value)
+    ? (value as LightType)
+    : null;
+
+/** Portée d'une lumière, en cases de grille. */
+export const sanitizeLightRadius = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.min(30, Math.max(0.5, value))
+    : undefined;
 
 export type MapTokenEntity = {
   id: string;
@@ -89,6 +116,10 @@ export type MapTokenEntity = {
   tokenType: TokenType;
   imageUrl: string | null;
   conditions: string[];
+  /** Lumière portée par le token (null : aucune). */
+  lightType: LightType | null;
+  /** Portée de la lumière, en cases. */
+  lightRadius: number;
   reference: null | {
     type: "note";
     id: string;
@@ -148,7 +179,8 @@ export type WeatherType =
   | "fog"
   | "bloodRain";
 
-export type TimeOfDay = "morning" | "day" | "night";
+/** "indoor" : donjon, grotte, bâtiment — obscurité neutre, sans ciel. */
+export type TimeOfDay = "morning" | "day" | "night" | "indoor";
 
 export type WeatherSettings = {
   /**
@@ -194,7 +226,9 @@ export const normalizeWeatherSettings = (
     windAngle: clampNumber(base.windAngle, -60, 60, 0),
     tokensAboveWeather: base.tokensAboveWeather === true,
     timeOfDay:
-      base.timeOfDay === "morning" || base.timeOfDay === "night"
+      base.timeOfDay === "morning" ||
+      base.timeOfDay === "night" ||
+      base.timeOfDay === "indoor"
         ? base.timeOfDay
         : "day",
     timeIntensity: clampNumber(base.timeIntensity, 0, 1, 0),
@@ -229,6 +263,8 @@ export type MapRoom = {
   points: Array<number>;
   /** false : la météo ne s'affiche pas dans cette pièce (intérieur). */
   hasWeather: boolean;
+  /** true : la pièce est éclairée de l'intérieur (visible la nuit). */
+  hasLight?: boolean;
 };
 
 const prepareRooms = (rawRooms: unknown): Array<MapRoom> =>
@@ -694,6 +730,8 @@ export class Maps {
       tokenType?: TokenType | null;
       isAlive?: boolean | null;
       imageUrl?: string | null;
+      lightType?: string | null;
+      lightRadius?: number | null;
     }>
   ) {
     return await this._processTask<{ tokens: Array<any> }>(
@@ -723,6 +761,8 @@ export class Maps {
             isAlive: props.isAlive ?? true,
             imageUrl: props.imageUrl ?? null,
             conditions: [],
+            lightType: sanitizeLightType(props.lightType),
+            lightRadius: sanitizeLightRadius(props.lightRadius) ?? 4,
           };
 
           newTokens.push(token);
@@ -762,6 +802,8 @@ export class Maps {
       isAlive,
       imageUrl,
       conditions,
+      lightType,
+      lightRadius,
     }: {
       type?: string;
       x?: number;
@@ -787,6 +829,8 @@ export class Maps {
       isAlive?: boolean;
       imageUrl?: string | null;
       conditions?: unknown;
+      lightType?: unknown;
+      lightRadius?: unknown;
     }
   ) {
     return await this._processTask<{ map: MapEntity; token: unknown }>(
@@ -865,6 +909,13 @@ export class Maps {
         const nextConditions = sanitizeConditions(conditions);
         if (nextConditions !== undefined) {
           token.conditions = nextConditions;
+        }
+        if (lightType !== undefined) {
+          token.lightType = sanitizeLightType(lightType);
+        }
+        const nextLightRadius = sanitizeLightRadius(lightRadius);
+        if (nextLightRadius !== undefined) {
+          token.lightRadius = nextLightRadius;
         }
 
         // Keep the linked combat participant in sync: visibility and

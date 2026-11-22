@@ -12,6 +12,8 @@ export type MapRoom = {
   /** Sommets à plat : [x1, y1, x2, y2, …] en pixels de l'image. */
   points: ReadonlyArray<number>;
   hasWeather: boolean;
+  /** La pièce est éclairée de l'intérieur (visible la nuit). */
+  hasLight?: boolean;
 };
 
 type Point = [number, number];

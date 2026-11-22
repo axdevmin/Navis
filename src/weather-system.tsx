@@ -4,6 +4,12 @@ import { useFrame, useThree } from "react-three-fiber";
 import type { TimeOfDay, WeatherType, WeatherSettings } from "./weather-types";
 import { getGraphicsSettings } from "./graphics-quality";
 import { requestMapRender } from "./render-scheduler";
+import { IsDungeonMasterContext } from "./is-dungeon-master-context";
+import {
+  MapLightingContext,
+  ROOM_LIGHT_COLOR,
+  liveLightPositions,
+} from "./light-sources";
 
 export type { WeatherType, WeatherSettings };
 
@@ -1439,6 +1445,306 @@ const CloudyOverlay = ({
   );
 };
 
+// ─── LUMIÈRES ────────────────────────────────────────────────────────────────
+// La nuit et le matin assombrissent la carte ; chaque source de lumière
+// (token ou pièce éclairée) efface cette obscurité autour d'elle et y ajoute
+// une lueur colorée qui vacille.
+
+/** Ordre de la lueur vue par le MJ : après le brouillard de guerre (9). */
+const TIME_OF_DAY_ABOVE_FOG_ORDER = 9.5;
+
+/** Nombre maximal de lumières de tokens dessinées à la fois. */
+const MAX_LIGHTS = 32;
+
+const lightingVertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+// Influence d'une lumière en un point : 1 au centre, 0 au bord, avec un
+// rayon qui vacille. Partagée par l'obscurité et la lueur.
+const lightingShaderCommon = `
+  #define MAX_LIGHTS ${MAX_LIGHTS}
+  uniform vec2 uSize;
+  uniform float uTime;
+  uniform int uLightCount;
+  uniform vec4 uLights[MAX_LIGHTS];      // x, y, portée, graine
+  uniform vec2 uLightFlicker[MAX_LIGHTS]; // ampleur, vitesse
+  uniform sampler2D uRoomMask;
+  uniform float uHasRooms;
+  varying vec2 vUv;
+
+  // distance au centre rapportée à la portée, sans vacillement (1 : le bord)
+  float lightDistance(int i, vec2 p) {
+    return distance(p, uLights[i].xy) / max(uLights[i].z, 0.0001);
+  }
+
+  float lightFalloff(int i, vec2 p) {
+    vec4 light = uLights[i];
+    vec2 flicker = uLightFlicker[i];
+    float wave = (0.55 + 0.45 * sin(uTime * flicker.y + light.w))
+      * (0.6 + 0.4 * sin(uTime * flicker.y * 2.7 + light.w * 3.1));
+    float radius = light.z * (1.0 - flicker.x * wave);
+    float d = distance(p, light.xy) / max(radius, 0.0001);
+    return clamp(1.0 - d, 0.0, 1.0);
+  }
+`;
+
+const darknessFragmentShader = `
+  ${lightingShaderCommon}
+  uniform vec3 uColor;
+  uniform float uOpacity;
+  uniform sampler2D uVignette;
+  uniform float uUseVignette;
+
+  void main() {
+    vec2 p = (vUv - 0.5) * uSize;
+    float lit = 0.0;
+    for (int i = 0; i < MAX_LIGHTS; i++) {
+      if (i >= uLightCount) break;
+      // pleine lumière jusqu'aux deux tiers de la portée, puis une pénombre
+      // qui s'éteint exactement au bord (le cercle que voit le MJ)
+      lit = max(lit, smoothstep(0.0, 0.4, lightFalloff(i, p)));
+    }
+    lit = max(lit, texture2D(uRoomMask, vUv).r * uHasRooms);
+    float shade = uUseVignette > 0.5 ? texture2D(uVignette, vUv).a : 1.0;
+    gl_FragColor = vec4(uColor, uOpacity * shade * (1.0 - 0.92 * lit));
+  }
+`;
+
+const glowFragmentShader = `
+  ${lightingShaderCommon}
+  uniform vec3 uLightColors[MAX_LIGHTS];
+  uniform vec3 uRoomColor;
+  uniform float uStrength;
+  uniform float uRangeRing;
+
+  void main() {
+    vec2 p = (vUv - 0.5) * uSize;
+    vec3 glow = vec3(0.0);
+    for (int i = 0; i < MAX_LIGHTS; i++) {
+      if (i >= uLightCount) break;
+      float f = lightFalloff(i, p);
+      glow += uLightColors[i] * pow(f, 1.6) * 0.26;
+      // cercle discret au bord de la portée (vue du MJ)
+      float edge = 1.0 - smoothstep(0.0, 0.025, abs(lightDistance(i, p) - 1.0));
+      glow += uLightColors[i] * edge * 0.6 * uRangeRing;
+    }
+    glow += uRoomColor * texture2D(uRoomMask, vUv).r * uHasRooms
+      * (0.12 - 0.07 * uRangeRing);
+    gl_FragColor = vec4(glow * uStrength, 1.0);
+  }
+`;
+
+const emptyMaskTexture = (() => {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  return new THREE.CanvasTexture(canvas);
+})();
+
+/**
+ * Masque des pièces éclairées : polygones remplis de blanc, bords adoucis.
+ * Recalculé seulement quand les pièces changent.
+ */
+const useRoomLightMask = (dimensions: WeatherDimensions) => {
+  const { litRooms } = React.useContext(MapLightingContext);
+  const signature = litRooms.map((room) => room.join(",")).join("|");
+  return React.useMemo(() => {
+    if (litRooms.length === 0) return null;
+    const width = 512;
+    const height = Math.max(
+      1,
+      Math.round((512 * dimensions.height) / dimensions.width)
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    // le flou d'ombre adoucit les bords sans dépendre de ctx.filter
+    ctx.shadowColor = "#ffffff";
+    ctx.shadowBlur = 14;
+    for (const room of litRooms) {
+      ctx.beginPath();
+      room.forEach(([x, y], index) => {
+        const cx = (x / dimensions.width + 0.5) * width;
+        const cy = (0.5 - y / dimensions.height) * height;
+        if (index === 0) ctx.moveTo(cx, cy);
+        else ctx.lineTo(cx, cy);
+      });
+      ctx.closePath();
+      ctx.fill();
+    }
+    return new THREE.CanvasTexture(canvas);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, dimensions.width, dimensions.height]);
+};
+
+/** Uniformes communs, remis à jour à chaque image depuis les lumières. */
+const useLightingUniforms = <TExtra extends Record<string, THREE.IUniform>>(
+  dimensions: WeatherDimensions,
+  extra: TExtra
+) => {
+  const lighting = React.useContext(MapLightingContext);
+  const roomMask = useRoomLightMask(dimensions);
+  const uniforms = React.useMemo(
+    () => ({
+      uSize: { value: new THREE.Vector2(dimensions.width, dimensions.height) },
+      uTime: { value: 0 },
+      uLightCount: { value: 0 },
+      uLights: {
+        value: Array.from({ length: MAX_LIGHTS }, () => new THREE.Vector4()),
+      },
+      uLightFlicker: {
+        value: Array.from({ length: MAX_LIGHTS }, () => new THREE.Vector2()),
+      },
+      uLightColors: {
+        value: Array.from({ length: MAX_LIGHTS }, () => new THREE.Vector3()),
+      },
+      uRoomMask: { value: emptyMaskTexture },
+      uHasRooms: { value: 0 },
+      ...extra,
+    }),
+    // les valeurs changent à chaque image, pas l'objet
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  useFrame(({ clock }) => {
+    uniforms.uSize.value.set(dimensions.width, dimensions.height);
+    uniforms.uTime.value = clock.getElapsedTime();
+    const count = Math.min(lighting.lights.length, MAX_LIGHTS);
+    uniforms.uLightCount.value = count;
+    for (let i = 0; i < count; i++) {
+      const light = lighting.lights[i];
+      const live = liveLightPositions.get(light.id);
+      uniforms.uLights.value[i].set(
+        live ? live[0] : light.x,
+        live ? live[1] : light.y,
+        light.radius,
+        i * 1.37
+      );
+      uniforms.uLightFlicker.value[i].set(
+        light.source.flicker,
+        light.source.flickerSpeed
+      );
+      uniforms.uLightColors.value[i].set(...light.source.color);
+    }
+    uniforms.uRoomMask.value = roomMask ?? emptyMaskTexture;
+    uniforms.uHasRooms.value = roomMask ? 1 : 0;
+  });
+
+  return uniforms;
+};
+
+/** Plan d'obscurité qui s'efface autour des lumières. */
+const LitDarkness = (props: {
+  dimensions: WeatherDimensions;
+  color: number;
+  opacity: number;
+  vignette?: THREE.Texture;
+}) => {
+  const uniforms = useLightingUniforms(props.dimensions, {
+    uColor: { value: new THREE.Color(props.color) },
+    uOpacity: { value: props.opacity },
+    uVignette: { value: props.vignette ?? emptyMaskTexture },
+    uUseVignette: { value: props.vignette ? 1 : 0 },
+  });
+  uniforms.uColor.value.set(props.color);
+  uniforms.uOpacity.value = props.opacity;
+
+  const material = React.useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: lightingVertexShader,
+        fragmentShader: darknessFragmentShader,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    [uniforms]
+  );
+  // react-three-fiber peut déjà avoir libéré le matériau au démontage
+  React.useEffect(
+    () => () => {
+      if (typeof material.dispose === "function") material.dispose();
+    },
+    [material]
+  );
+
+  return (
+    <mesh renderOrder={7}>
+      <planeBufferGeometry
+        attach="geometry"
+        args={[props.dimensions.width, props.dimensions.height]}
+      />
+      <primitive object={material} attach="material" />
+    </mesh>
+  );
+};
+
+/** Lueur colorée des lumières, en mélange additif. */
+const LightGlow = (props: {
+  dimensions: WeatherDimensions;
+  strength: number;
+}) => {
+  // Le MJ voit à travers son brouillard semi-transparent : la lueur passe
+  // par-dessus, avec un cercle qui marque la portée exacte.
+  const isDungeonMaster = React.useContext(IsDungeonMasterContext);
+  const uniforms = useLightingUniforms(props.dimensions, {
+    uStrength: { value: props.strength },
+    uRoomColor: { value: new THREE.Vector3(...ROOM_LIGHT_COLOR) },
+    uRangeRing: { value: isDungeonMaster ? 1 : 0 },
+  });
+  // par-dessus son brouillard, la lueur du MJ reste plus discrète
+  uniforms.uStrength.value = props.strength * (isDungeonMaster ? 0.6 : 1);
+  uniforms.uRangeRing.value = isDungeonMaster ? 1 : 0;
+
+  const material = React.useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: lightingVertexShader,
+        fragmentShader: glowFragmentShader,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    [uniforms]
+  );
+  // react-three-fiber peut déjà avoir libéré le matériau au démontage
+  React.useEffect(
+    () => () => {
+      if (typeof material.dispose === "function") material.dispose();
+    },
+    [material]
+  );
+
+  const mesh = (
+    <mesh renderOrder={8}>
+      <planeBufferGeometry
+        attach="geometry"
+        args={[props.dimensions.width, props.dimensions.height]}
+      />
+      <primitive object={material} attach="material" />
+    </mesh>
+  );
+  // three trie d'abord par groupe parent : ce groupe place la lueur après
+  // le brouillard de guerre (ordre 9) pour le MJ.
+  return isDungeonMaster ? (
+    <group renderOrder={TIME_OF_DAY_ABOVE_FOG_ORDER}>{mesh}</group>
+  ) : (
+    mesh
+  );
+};
+
 // ─── NUIT ────────────────────────────────────────────────────────────────────
 // Éclairage bleuté de clair de lune, bords dans le noir, lueur de lune d'un
 // côté et lucioles qui s'allument et s'éteignent.
@@ -1468,18 +1774,22 @@ const MoonOverlay = ({
 
   return (
     <>
-      {/* nuit : la carte s'assombrit et bleuit */}
-      <FullPlane
+      {/* nuit : la carte s'assombrit et bleuit, sauf autour des lumières */}
+      <LitDarkness
         dimensions={dimensions}
         color={0x060b1f}
         opacity={(0.15 + 0.5 * darkness) * fade}
       />
       {/* les bords plongent dans le noir */}
-      <FullPlane
+      <LitDarkness
         dimensions={dimensions}
         color={0x02040c}
-        map={vignetteTexture}
+        vignette={vignetteTexture}
         opacity={(0.25 + 0.5 * darkness) * fade}
+      />
+      <LightGlow
+        dimensions={dimensions}
+        strength={(0.55 + 0.45 * darkness) * fade}
       />
       {/* clair de lune venu d'un côté */}
       <mesh position={[moonX, moonY, 0]} renderOrder={8}>
@@ -1554,7 +1864,7 @@ const MorningOverlay = ({
   return (
     <>
       {/* lumière encore faible : la carte est un peu voilée de bleu */}
-      <FullPlane
+      <LitDarkness
         dimensions={dimensions}
         color={0x1d2440}
         opacity={0.16 * strength}
@@ -1566,12 +1876,13 @@ const MorningOverlay = ({
         opacity={0.14 * strength}
         additive
       />
-      <FullPlane
+      <LitDarkness
         dimensions={dimensions}
         color={0x1a1420}
-        map={vignetteTexture}
+        vignette={vignetteTexture}
         opacity={0.3 * strength}
       />
+      <LightGlow dimensions={dimensions} strength={0.35 * strength} />
       {/* lumière rasante venue d'un côté */}
       <mesh position={[sunX, sunY, 0]} renderOrder={8}>
         <planeBufferGeometry
@@ -1612,6 +1923,41 @@ const MorningOverlay = ({
   );
 };
 
+// ─── INTÉRIEUR ───────────────────────────────────────────────────────────────
+// Donjon, grotte, bâtiment : une obscurité neutre, sans ciel ni lune ; seules
+// les lumières (tokens, pièces éclairées) éclairent.
+
+const IndoorOverlay = ({
+  darkness,
+  fade,
+  dimensions,
+}: {
+  darkness: number;
+  fade: number;
+  dimensions: WeatherDimensions;
+}) => {
+  const vignetteTexture = React.useMemo(createVignetteTexture, []);
+  return (
+    <>
+      <LitDarkness
+        dimensions={dimensions}
+        color={0x050506}
+        opacity={(0.2 + 0.65 * darkness) * fade}
+      />
+      <LitDarkness
+        dimensions={dimensions}
+        color={0x020203}
+        vignette={vignetteTexture}
+        opacity={(0.15 + 0.35 * darkness) * fade}
+      />
+      <LightGlow
+        dimensions={dimensions}
+        strength={(0.6 + 0.4 * darkness) * fade}
+      />
+    </>
+  );
+};
+
 // ─── MOMENT DE LA JOURNÉE ────────────────────────────────────────────────────
 
 type TimeSettings = {
@@ -1639,6 +1985,15 @@ const TimeOfDayEffect = ({
         fade={fade}
         dimensions={dimensions}
         clippingPlanes={clippingPlanes}
+      />
+    );
+  }
+  if (settings.timeOfDay === "indoor") {
+    return (
+      <IndoorOverlay
+        darkness={settings.timeIntensity}
+        fade={fade}
+        dimensions={dimensions}
       />
     );
   }
@@ -1979,12 +2334,6 @@ export const WeatherSystem = React.memo(
     config: WeatherSettings;
     dimensions: WeatherDimensions;
   }) => {
-    const time: TimeSettings = {
-      timeOfDay: config.timeOfDay ?? "day",
-      timeIntensity: config.timeIntensity ?? 0,
-      lightAngle: config.lightAngle ?? -30,
-      fireflies: config.fireflies ?? 0.5,
-    };
     // les anciennes valeurs « soleil » et « nuit » sont converties par le
     // serveur ; par prudence on ne les affiche plus comme météo
     const weatherKey =
@@ -1993,7 +2342,48 @@ export const WeatherSystem = React.memo(
         : config.type;
 
     return (
+      <CrossFade
+        layerKey={weatherKey}
+        value={config}
+        valueSignature={`${config.intensity}|${config.windAngle}`}
+        render={(value, fade) => (
+          <WeatherSystemInner
+            config={{ ...value, fade }}
+            dimensions={dimensions}
+          />
+        )}
+      />
+    );
+  }
+);
+
+/**
+ * Le moment de la journée (matin, soleil, nuit) avec son fondu. Il est rendu
+ * hors de l'abri météo : la nuit tombe aussi dans les pièces abritées.
+ */
+export const TimeOfDaySystem = React.memo(
+  ({
+    config,
+    dimensions,
+  }: {
+    config: WeatherSettings;
+    dimensions: WeatherDimensions;
+  }) => {
+    const time: TimeSettings = {
+      timeOfDay: config.timeOfDay ?? "day",
+      timeIntensity: config.timeIntensity ?? 0,
+      lightAngle: config.lightAngle ?? -30,
+      fireflies: config.fireflies ?? 0.5,
+    };
+    // En journée rien n'assombrit la carte : les lumières y ajoutent quand
+    // même leur lueur, pour que l'éclairage marche à tout moment.
+    const dayGlow =
+      time.timeOfDay === "day" ? (
+        <LightGlow dimensions={dimensions} strength={0.8} />
+      ) : null;
+    return (
       <>
+        {dayGlow}
         <CrossFade
           layerKey={hasTimeOfDayEffect(config) ? time.timeOfDay : null}
           value={time}
@@ -2002,17 +2392,6 @@ export const WeatherSystem = React.memo(
             <TimeOfDayEffect
               settings={value}
               fade={fade}
-              dimensions={dimensions}
-            />
-          )}
-        />
-        <CrossFade
-          layerKey={weatherKey}
-          value={config}
-          valueSignature={`${config.intensity}|${config.windAngle}`}
-          render={(value, fade) => (
-            <WeatherSystemInner
-              config={{ ...value, fade }}
               dimensions={dimensions}
             />
           )}

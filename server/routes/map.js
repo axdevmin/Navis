@@ -366,6 +366,8 @@ module.exports = ({ roleMiddleware, maps, settings, emitter }) => {
         tokenType: req.body.tokenType,
         isAlive: req.body.isAlive,
         conditions: req.body.conditions,
+        lightType: req.body.lightType,
+        lightRadius: req.body.lightRadius,
       };
     }
 

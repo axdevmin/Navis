@@ -10,7 +10,8 @@ export type WeatherType =
   | "fog"
   | "bloodRain";
 
-export type TimeOfDay = "morning" | "day" | "night";
+/** "indoor" : donjon, grotte, bâtiment — obscurité neutre, sans ciel. */
+export type TimeOfDay = "morning" | "day" | "night" | "indoor";
 
 export type WeatherSettings = {
   /** Précipitations et ciel ("sun" et "moon" ne sont plus utilisés). */

@@ -641,6 +641,8 @@ const WeatherButton = (props: {
       ? Icon.Moon
       : timeOfDay === "morning"
       ? Icon.Sunrise
+      : timeOfDay === "indoor"
+      ? Icon.Lightbulb
       : hasTimeEffect
       ? Icon.Sun
       : Icon.Cloud;
@@ -874,6 +876,7 @@ const MapUpdateRoomsMutation = graphql`
           name
           points
           hasWeather
+          hasLight
         }
       }
     }
@@ -970,6 +973,19 @@ const RoomSettings = (): React.ReactElement => {
                 }
               >
                 <Icon.Cloud boxSize="14px" />
+              </RoomIconButton>
+              <RoomIconButton
+                isOn={room.hasLight === true}
+                title={
+                  room.hasLight
+                    ? "Pièce éclairée : la lumière perce la nuit. Cliquer pour l'éteindre."
+                    : "Éclairer cette pièce (lumière intérieure, visible la nuit)."
+                }
+                onClick={() =>
+                  actions.updateRoom(room.id, { hasLight: !room.hasLight })
+                }
+              >
+                <Icon.Lightbulb boxSize="14px" />
               </RoomIconButton>
               <RoomIconButton
                 title="Supprimer cette pièce (le brouillard n'est pas modifié)"
@@ -1165,6 +1181,7 @@ const DMMapFragment = graphql`
       name
       points
       hasWeather
+      hasLight
     }
     weatherSettings {
       type
@@ -1503,6 +1520,7 @@ export const DmMap = (props: {
             name: room.name,
             points: [...room.points],
             hasWeather: room.hasWeather,
+            hasLight: room.hasLight === true,
           })),
         },
       },
@@ -1879,7 +1897,8 @@ export const DmMap = (props: {
       title: `Moment : ${option.label}`,
       group: "Météo",
       icon: <option.icon boxSize="16px" />,
-      keywords: "meteo heure matin jour journee nuit soleil",
+      keywords:
+        "meteo heure matin jour journee nuit soleil interieur donjon grotte",
       run: () => {
         const weather = map.weatherSettings;
         updateWeather({

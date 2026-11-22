@@ -82,6 +82,13 @@ export const TIME_OF_DAY_OPTIONS: TimeOption[] = [
   },
   { value: "day", label: "Journée", icon: Icon.Sun, defaultIntensity: 0 },
   { value: "night", label: "Nuit", icon: Icon.Moon, defaultIntensity: 0.6 },
+  // donjon, grotte, bâtiment : seules les lumières éclairent
+  {
+    value: "indoor",
+    label: "Intérieur",
+    icon: Icon.Lightbulb,
+    defaultIntensity: 0.7,
+  },
 ];
 
 type WeatherValues = {
@@ -135,7 +142,7 @@ const Divider = styled.div`
 /** Matin / Journée / Nuit : un contrôle segmenté sur toute la largeur. */
 const Segmented = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 2px;
   padding: 2px;
   border-radius: ${ds.radii.md};
@@ -327,7 +334,7 @@ export const WeatherControls = (props: {
 
         <Slider
           label={
-            timeOfDay === "night"
+            timeOfDay === "night" || timeOfDay === "indoor"
               ? "Obscurité"
               : timeOfDay === "morning"
               ? "Lumière du matin"
@@ -340,7 +347,7 @@ export const WeatherControls = (props: {
           format={percent}
           onChange={(timeIntensity) => apply({ timeIntensity })}
         />
-        {timeOfDay === "night" ? (
+        {timeOfDay === "indoor" ? null : timeOfDay === "night" ? (
           <Slider
             label="Lucioles"
             value={weather.fireflies}

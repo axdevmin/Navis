@@ -94,6 +94,8 @@ export const addManyMapToken = (params: {
     isVisibleForPlayers?: boolean | null;
     isMovableByPlayers?: boolean | null;
     tokenImageId?: null | string;
+    lightType?: string | null;
+    lightRadius?: number | null;
   }>;
 }) =>
   pipe(
