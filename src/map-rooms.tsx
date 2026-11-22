@@ -14,6 +14,44 @@ export type MapRoom = {
   hasWeather: boolean;
   /** La pièce est éclairée de l'intérieur (visible la nuit). */
   hasLight?: boolean;
+  /** Porte fermée : la vision des tokens n'entre pas dans la pièce. */
+  blocksVision?: boolean;
+};
+
+/**
+ * Masque de polygones (repère de la scène) pour un shader : blanc dedans,
+ * noir dehors, bords légèrement adoucis. `null` s'il n'y a rien.
+ */
+export const createPolygonMaskTexture = (
+  polygons: ReadonlyArray<ReadonlyArray<readonly [number, number]>>,
+  dimensions: { width: number; height: number },
+  softness = 4
+): THREE.CanvasTexture | null => {
+  if (polygons.length === 0) return null;
+  const width = 512;
+  const height = Math.max(
+    1,
+    Math.round((512 * dimensions.height) / dimensions.width)
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "#ffffff";
+  ctx.shadowBlur = softness;
+  for (const polygon of polygons) {
+    ctx.beginPath();
+    polygon.forEach(([x, y], index) => {
+      const cx = (x / dimensions.width + 0.5) * width;
+      const cy = (0.5 - y / dimensions.height) * height;
+      if (index === 0) ctx.moveTo(cx, cy);
+      else ctx.lineTo(cx, cy);
+    });
+    ctx.closePath();
+    ctx.fill();
+  }
+  return new THREE.CanvasTexture(canvas);
 };
 
 type Point = [number, number];

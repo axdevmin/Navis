@@ -249,6 +249,42 @@ export const TokenInspector = (props: {
             </Section>
           ) : null}
 
+          {has("visionRadius") ? (
+            <Section>
+              <Row>
+                <RowLabel title="Le brouillard de guerre s'efface autour du token quand il avance, et reste révélé.">
+                  Vision
+                </RowLabel>
+                <RangeInput
+                  type="range"
+                  aria-label="Portée de vision"
+                  min={0}
+                  max={12}
+                  step={0.5}
+                  value={Number(valueOf("visionRadius") ?? 0)}
+                  onChange={(ev) =>
+                    set("visionRadius", parseFloat(ev.target.value))
+                  }
+                />
+                <ValueHint>
+                  {Number(valueOf("visionRadius") ?? 0) === 0
+                    ? "Aucune"
+                    : `${Number(valueOf("visionRadius"))} case${
+                        Number(valueOf("visionRadius")) > 1 ? "s" : ""
+                      }`}
+                </ValueHint>
+              </Row>
+              {has("visionMemory") &&
+              Number(valueOf("visionRadius") ?? 0) > 0 ? (
+                <ToggleRow
+                  label="Garder la zone révélée"
+                  checked={valueOf("visionMemory") !== false}
+                  onChange={(checked) => set("visionMemory", checked)}
+                />
+              ) : null}
+            </Section>
+          ) : null}
+
           {has("conditions") ? (
             <Section>
               <ConditionPicker

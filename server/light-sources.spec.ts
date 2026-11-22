@@ -1,4 +1,8 @@
-import { sanitizeLightRadius, sanitizeLightType } from "./maps";
+import {
+  sanitizeLightRadius,
+  sanitizeLightType,
+  sanitizeVisionRadius,
+} from "./maps";
 
 describe("lumières des tokens", () => {
   it("n'accepte que les types de lumière connus", () => {
@@ -15,5 +19,13 @@ describe("lumières des tokens", () => {
     expect(sanitizeLightRadius(500)).toBe(30);
     expect(sanitizeLightRadius("4")).toBe(undefined);
     expect(sanitizeLightRadius(Number.NaN)).toBe(undefined);
+  });
+
+  it("borne la vision entre 0 (désactivée) et 30 cases", () => {
+    expect(sanitizeVisionRadius(0)).toBe(0);
+    expect(sanitizeVisionRadius(-2)).toBe(0);
+    expect(sanitizeVisionRadius(6)).toBe(6);
+    expect(sanitizeVisionRadius(99)).toBe(30);
+    expect(sanitizeVisionRadius(null)).toBe(undefined);
   });
 });

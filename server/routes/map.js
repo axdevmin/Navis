@@ -368,6 +368,8 @@ module.exports = ({ roleMiddleware, maps, settings, emitter }) => {
         conditions: req.body.conditions,
         lightType: req.body.lightType,
         lightRadius: req.body.lightRadius,
+        visionRadius: req.body.visionRadius,
+        visionMemory: req.body.visionMemory,
       };
     }
 

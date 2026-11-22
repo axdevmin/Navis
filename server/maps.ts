@@ -43,6 +43,10 @@ const prepareToken = (token: { [key: string]: unknown }) => {
   token.conditions = sanitizeConditions(token.conditions) ?? [];
   token.lightType = sanitizeLightType(token.lightType);
   token.lightRadius = sanitizeLightRadius(token.lightRadius) ?? 4;
+  token.visionRadius = sanitizeVisionRadius(token.visionRadius) ?? 0;
+  if (typeof token.visionMemory !== "boolean") {
+    token.visionMemory = true;
+  }
 
   return token;
 };
@@ -95,6 +99,12 @@ export const sanitizeLightType = (value: unknown): LightType | null =>
     ? (value as LightType)
     : null;
 
+/** Portée de vision (révèle le brouillard en avançant), en cases ; 0 : aucune. */
+export const sanitizeVisionRadius = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.min(30, Math.max(0, value))
+    : undefined;
+
 /** Portée d'une lumière, en cases de grille. */
 export const sanitizeLightRadius = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value)
@@ -120,6 +130,13 @@ export type MapTokenEntity = {
   lightType: LightType | null;
   /** Portée de la lumière, en cases. */
   lightRadius: number;
+  /** Vision : le brouillard s'efface autour du token quand il avance (cases, 0 : aucune). */
+  visionRadius: number;
+  /**
+   * true : ce que voit le token reste révélé. false : seul le cercle autour
+   * de lui est visible, le brouillard se referme derrière.
+   */
+  visionMemory: boolean;
   reference: null | {
     type: "note";
     id: string;
@@ -265,6 +282,11 @@ export type MapRoom = {
   hasWeather: boolean;
   /** true : la pièce est éclairée de l'intérieur (visible la nuit). */
   hasLight?: boolean;
+  /**
+   * true : porte fermée, la vision des tokens n'entre pas dans la pièce tant
+   * que le MJ ne l'ouvre pas.
+   */
+  blocksVision?: boolean;
 };
 
 const prepareRooms = (rawRooms: unknown): Array<MapRoom> =>
@@ -763,6 +785,8 @@ export class Maps {
             conditions: [],
             lightType: sanitizeLightType(props.lightType),
             lightRadius: sanitizeLightRadius(props.lightRadius) ?? 4,
+            visionRadius: 0,
+            visionMemory: true,
           };
 
           newTokens.push(token);
@@ -804,6 +828,8 @@ export class Maps {
       conditions,
       lightType,
       lightRadius,
+      visionRadius,
+      visionMemory,
     }: {
       type?: string;
       x?: number;
@@ -831,6 +857,8 @@ export class Maps {
       conditions?: unknown;
       lightType?: unknown;
       lightRadius?: unknown;
+      visionRadius?: unknown;
+      visionMemory?: unknown;
     }
   ) {
     return await this._processTask<{ map: MapEntity; token: unknown }>(
@@ -916,6 +944,13 @@ export class Maps {
         const nextLightRadius = sanitizeLightRadius(lightRadius);
         if (nextLightRadius !== undefined) {
           token.lightRadius = nextLightRadius;
+        }
+        const nextVisionRadius = sanitizeVisionRadius(visionRadius);
+        if (nextVisionRadius !== undefined) {
+          token.visionRadius = nextVisionRadius;
+        }
+        if (typeof visionMemory === "boolean") {
+          token.visionMemory = visionMemory;
         }
 
         // Keep the linked combat participant in sync: visibility and

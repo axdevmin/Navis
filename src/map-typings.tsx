@@ -37,6 +37,10 @@ export type MapTokenEntity = {
   lightType?: string | null;
   /** Portée de la lumière, en cases. */
   lightRadius?: number;
+  /** Vision : le brouillard s'efface autour du token quand il avance (cases). */
+  visionRadius?: number;
+  /** false : le brouillard se referme derrière le token. */
+  visionMemory?: boolean;
   reference: null | {
     type: "note";
     id: string;

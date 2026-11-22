@@ -182,6 +182,32 @@ const GraphQLMapRoomType = t.objectType<MapRoom>({
       type: t.NonNull(t.Boolean),
       resolve: (source) => source.hasLight === true,
     }),
+    t.field({
+      name: "blocksVision",
+      description:
+        "Porte fermée : la vision des tokens n'entre pas dans la pièce.",
+      type: t.NonNull(t.Boolean),
+      resolve: (source) => source.blocksVision === true,
+    }),
+  ],
+});
+
+const GraphQLMapVisionType = t.objectType<{
+  id: string;
+  tokenId: string;
+  x: number;
+  y: number;
+  radius: number;
+}>({
+  name: "MapVision",
+  description:
+    "Vision sans mémoire d'un token : seul ce cercle est visible (position en pixels de l'image, portée en cases).",
+  fields: () => [
+    t.field({ name: "id", type: t.NonNull(t.ID) }),
+    t.field({ name: "tokenId", type: t.NonNull(t.ID) }),
+    t.field({ name: "x", type: t.NonNull(t.Float) }),
+    t.field({ name: "y", type: t.NonNull(t.Float) }),
+    t.field({ name: "radius", type: t.NonNull(t.Float) }),
   ],
 });
 
@@ -216,6 +242,7 @@ const GraphQLMapRoomInputType = t.inputObjectType({
     points: { type: t.NonNullInput(t.ListInput(t.NonNullInput(t.Float))) },
     hasWeather: { type: t.NonNullInput(t.Boolean) },
     hasLight: { type: t.Boolean },
+    blocksVision: { type: t.Boolean },
   }),
 });
 
@@ -880,6 +907,7 @@ export const mutationFields = [
               points: room.points,
               hasWeather: room.hasWeather,
               hasLight: room.hasLight === true,
+              blocksVision: room.blocksVision === true,
             })),
         }),
         context
@@ -1180,6 +1208,20 @@ const GraphQLMapTokenType = t.objectType<MapTokenEntity>({
       resolve: (source) => source.lightRadius ?? 4,
     }),
     t.field({
+      name: "visionRadius",
+      description:
+        "Vision : le brouillard s'efface autour du token quand il avance (en cases, 0 : aucune).",
+      type: t.NonNull(t.Float),
+      resolve: (source) => source.visionRadius ?? 0,
+    }),
+    t.field({
+      name: "visionMemory",
+      description:
+        "true : ce que voit le token reste révélé ; false : le brouillard se referme derrière lui.",
+      type: t.NonNull(t.Boolean),
+      resolve: (source) => source.visionMemory !== false,
+    }),
+    t.field({
       name: "imageUrl",
       type: t.String,
       resolve: (source) => source.imageUrl ?? null,
@@ -1298,8 +1340,32 @@ const GraphQLMapType = t.objectType<MapEntity>({
         context.session.role === "admin"
           ? source.rooms ?? []
           : (source.rooms ?? []).filter(
-              (room) => room.hasWeather === false || room.hasLight === true
+              (room) =>
+                room.hasWeather === false ||
+                room.hasLight === true ||
+                room.blocksVision === true
             ),
+    }),
+    t.field({
+      name: "visions",
+      description:
+        "Visions sans mémoire des tokens : le brouillard ne s'ouvre que dans ces cercles. Les joueurs reçoivent celles des tokens qu'ils voient.",
+      type: t.NonNull(t.List(t.NonNull(GraphQLMapVisionType))),
+      resolve: (source, _, context) =>
+        (source.tokens ?? [])
+          .filter(
+            (token) =>
+              (token.visionRadius ?? 0) > 0 &&
+              token.visionMemory === false &&
+              (context.session.role === "admin" || token.isVisibleForPlayers)
+          )
+          .map((token) => ({
+            id: `MapVision:${token.id}`,
+            tokenId: token.id,
+            x: token.x,
+            y: token.y,
+            radius: token.visionRadius,
+          })),
     }),
     t.field({
       name: "lights",

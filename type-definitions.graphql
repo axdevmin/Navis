@@ -341,6 +341,11 @@ type Map {
   rooms: [MapRoom!]!
 
   """
+  Visions sans mémoire des tokens : le brouillard ne s'ouvre que dans ces cercles. Les joueurs reçoivent celles des tokens qu'ils voient.
+  """
+  visions: [MapVision!]!
+
+  """
   Sources de lumière des tokens. Les joueurs reçoivent celles des tokens qu'ils voient et des tokens « lumière » (cheminée, feu…), invisibles mais dont la lueur se voit.
   """
   lights: [MapLight!]!
@@ -392,6 +397,16 @@ type MapToken {
   Portée de la lumière, en cases.
   """
   lightRadius: Float!
+
+  """
+  Vision : le brouillard s'efface autour du token quand il avance (en cases, 0 : aucune).
+  """
+  visionRadius: Float!
+
+  """
+  true : ce que voit le token reste révélé ; false : le brouillard se referme derrière lui.
+  """
+  visionMemory: Boolean!
   imageUrl: String
 }
 
@@ -490,6 +505,22 @@ type MapRoom {
   La pièce est éclairée de l'intérieur.
   """
   hasLight: Boolean!
+
+  """
+  Porte fermée : la vision des tokens n'entre pas dans la pièce.
+  """
+  blocksVision: Boolean!
+}
+
+"""
+Vision sans mémoire d'un token : seul ce cercle est visible (position en pixels de l'image, portée en cases).
+"""
+type MapVision {
+  id: ID!
+  tokenId: ID!
+  x: Float!
+  y: Float!
+  radius: Float!
 }
 
 """
@@ -1064,6 +1095,7 @@ input MapRoomInput {
   points: [Float!]!
   hasWeather: Boolean!
   hasLight: Boolean
+  blocksVision: Boolean
 }
 
 input MapPingInput {

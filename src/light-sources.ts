@@ -113,3 +113,30 @@ export const MapLightingContext = React.createContext<MapLighting>({
  * attendre l'enregistrement.
  */
 export const liveLightPositions = new Map<string, [number, number]>();
+
+/** Une vision sans mémoire : seul ce cercle est visible dans le brouillard. */
+export type SceneVision = {
+  /** Identifiant du token (positions en direct). */
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+};
+
+export type MapVision = {
+  /** Cercles de vision, dans le repère de la scène. */
+  visions: Array<SceneVision>;
+  /** Mêmes cercles en pixels de l'image (tokens cachés ou non). */
+  imageVisions: Array<{ x: number; y: number; radius: number }>;
+  /** Pièces fermées (polygones dans le repère de la scène). */
+  closedRooms: Array<Array<[number, number]>>;
+  /** Pièces fermées, sommets en pixels de l'image. */
+  closedRoomsImage: Array<ReadonlyArray<number>>;
+};
+
+export const MapVisionContext = React.createContext<MapVision>({
+  visions: [],
+  imageVisions: [],
+  closedRooms: [],
+  closedRoomsImage: [],
+});
