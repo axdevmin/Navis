@@ -191,6 +191,12 @@ const Plane = React.forwardRef(
   }
 );
 
+/**
+ * Réglage de la carte (panneau Météo) : les tokens passent par-dessus la
+ * météo au lieu d'être voilés par elle.
+ */
+const TokensAboveWeatherContext = React.createContext(false);
+
 const SharedMapState = React.createContext<SharedMapToolState>(
   undefined as any
 );
@@ -913,6 +919,29 @@ const TokenRenderer = (props: {
   const deadOpacity = isAlive ? baseOpacity : baseOpacity * 0.4;
   const resolvedImageUrl = token.tokenImage?.url ?? token.imageUrl ?? null;
 
+  // Tokens au-dessus de la météo (réglage de la carte, panneau Météo) : on
+  // décale l'ordre de rendu de tout ce qui compose le token (disque, image,
+  // nom, pastilles) entre la météo et le brouillard.
+  // Les éléments apparaissent au fil des chargements, d'où un passage à
+  // chaque image ; ce sont quelques objets par token.
+  const layerRef = React.useRef<THREE.Group>(null);
+  const isAboveWeather = React.useContext(TokensAboveWeatherContext);
+  useFrame(() => {
+    layerRef.current?.traverse((object) => {
+      const data = object.userData as { baseRenderOrder?: number };
+      if (data.baseRenderOrder === undefined) {
+        data.baseRenderOrder = object.renderOrder;
+      }
+      // la météo occupe 8 à 8,1 (voir WeatherShelter), le brouillard 9
+      const target = isAboveWeather
+        ? LayerRenderOrder.weather + 0.2 + (data.baseRenderOrder + 1) / 20
+        : data.baseRenderOrder;
+      if (object.renderOrder !== target) {
+        object.renderOrder = target;
+      }
+    });
+  });
+
   const isUnderFog = React.useMemo(() => {
     if (isDungeonMaster) return false;
     const fogCanvas = sharedMapState.fogCanvas;
@@ -936,7 +965,7 @@ const TokenRenderer = (props: {
   if (isUnderFog) return null;
 
   return (
-    <>
+    <group ref={layerRef}>
       <animated.group
         position={animatedProps.position}
         scale={animatedProps.circleScale}
@@ -1112,7 +1141,7 @@ const TokenRenderer = (props: {
           />
         </animated.group>
       ) : null}
-    </>
+    </group>
   );
 };
 
@@ -1838,13 +1867,17 @@ const FogAnimatedRenderer = (props: {
   });
 
   return (
-    <mesh renderOrder={LayerRenderOrder.fog}>
-      <planeBufferGeometry
-        attach="geometry"
-        args={[props.width, props.height]}
-      />
-      <primitive object={material} attach="material" />
-    </mesh>
+    // Le groupe porte l'ordre : three trie d'abord par groupe parent, et le
+    // brouillard doit passer après la météo et les tokens.
+    <group renderOrder={LayerRenderOrder.fog}>
+      <mesh renderOrder={LayerRenderOrder.fog}>
+        <planeBufferGeometry
+          attach="geometry"
+          args={[props.width, props.height]}
+        />
+        <primitive object={material} attach="material" />
+      </mesh>
+    </group>
   );
 };
 
@@ -1876,13 +1909,17 @@ const FogDMRenderer = (props: {
   });
 
   return (
-    <mesh renderOrder={LayerRenderOrder.fog}>
-      <planeBufferGeometry
-        attach="geometry"
-        args={[props.width, props.height]}
-      />
-      <primitive object={material} attach="material" />
-    </mesh>
+    // Le groupe porte l'ordre : three trie d'abord par groupe parent, et le
+    // brouillard doit passer après la météo et les tokens.
+    <group renderOrder={LayerRenderOrder.fog}>
+      <mesh renderOrder={LayerRenderOrder.fog}>
+        <planeBufferGeometry
+          attach="geometry"
+          args={[props.width, props.height]}
+        />
+        <primitive object={material} attach="material" />
+      </mesh>
+    </group>
   );
 };
 
@@ -2362,52 +2399,56 @@ const MapViewRenderer = (props: {
 
   return (
     <SharedMapState.Provider value={toolContext}>
-      <Plane
-        position={spring.position}
-        scale={spring.scale}
-        transparentBackground={map.mediaType === "video_url"}
-        {...bind()}
-        ref={planeRef}
+      <TokensAboveWeatherContext.Provider
+        value={props.weatherConfig.tokensAboveWeather === true}
       >
-        <MapRenderer
-          map={map}
-          mapTexture={activeMapTexture}
-          imageNaturalWidth={mediaNaturalWidth}
-          imageNaturalHeight={mediaNaturalHeight}
-          fogTexture={fogTexture}
-          viewport={viewport}
-          markerRadius={20}
+        <Plane
+          position={spring.position}
           scale={spring.scale}
-          dimensions={dimensions}
-          factor={
-            dimensions.width / mediaNaturalWidth / optimalDimensions.ratio
-          }
-          fogOpacity={props.fogOpacity}
-          hideMapMesh={map.mediaType === "video_url"}
-        />
-        {props.activeTool ? (
-          <MapToolRenderer
-            key={props.activeTool.id}
-            tool={props.activeTool}
-            toolRef={toolRef}
-            handlerContext={toolContext}
-          />
-        ) : null}
-        <WeatherShelter
-          rooms={map.rooms}
-          toScene={toolContext.helper.imageCoordinatesToThreePoint}
-          renderOrder={LayerRenderOrder.weather - 0.5}
+          transparentBackground={map.mediaType === "video_url"}
+          {...bind()}
+          ref={planeRef}
         >
-          <WeatherSystem
-            config={props.weatherConfig}
-            dimensions={{
-              width: dimensions.width,
-              height: dimensions.height,
-            }}
+          <MapRenderer
+            map={map}
+            mapTexture={activeMapTexture}
+            imageNaturalWidth={mediaNaturalWidth}
+            imageNaturalHeight={mediaNaturalHeight}
+            fogTexture={fogTexture}
+            viewport={viewport}
+            markerRadius={20}
+            scale={spring.scale}
+            dimensions={dimensions}
+            factor={
+              dimensions.width / mediaNaturalWidth / optimalDimensions.ratio
+            }
+            fogOpacity={props.fogOpacity}
+            hideMapMesh={map.mediaType === "video_url"}
           />
-        </WeatherShelter>
-      </Plane>
-      <DiceRollRenderer mapId={props.mapId} />
+          {props.activeTool ? (
+            <MapToolRenderer
+              key={props.activeTool.id}
+              tool={props.activeTool}
+              toolRef={toolRef}
+              handlerContext={toolContext}
+            />
+          ) : null}
+          <WeatherShelter
+            rooms={map.rooms}
+            toScene={toolContext.helper.imageCoordinatesToThreePoint}
+            renderOrder={LayerRenderOrder.weather - 0.5}
+          >
+            <WeatherSystem
+              config={props.weatherConfig}
+              dimensions={{
+                width: dimensions.width,
+                height: dimensions.height,
+              }}
+            />
+          </WeatherShelter>
+        </Plane>
+        <DiceRollRenderer mapId={props.mapId} />
+      </TokensAboveWeatherContext.Provider>
     </SharedMapState.Provider>
   );
 };
@@ -2484,6 +2525,7 @@ const MapFragment = graphql`
       type
       intensity
       windAngle
+      tokensAboveWeather
     }
     ...mapView_MapViewRendererFragment
   }

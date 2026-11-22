@@ -8,6 +8,7 @@ import { weatherControls_MapFragment$key } from "./__generated__/weatherControls
 import { weatherControls_mapUpdateWeatherMutation } from "./__generated__/weatherControls_mapUpdateWeatherMutation.graphql";
 import { ds } from "../design-system";
 import * as Icon from "../feather-icons";
+import { ToggleRow } from "../token-inspector";
 
 const WeatherControlsMapFragment = graphql`
   fragment weatherControls_MapFragment on Map {
@@ -16,6 +17,7 @@ const WeatherControlsMapFragment = graphql`
       type
       intensity
       windAngle
+      tokensAboveWeather
     }
   }
 `;
@@ -30,6 +32,7 @@ export const MapUpdateWeatherMutation = graphql`
           type
           intensity
           windAngle
+          tokensAboveWeather
         }
       }
     }
@@ -46,8 +49,10 @@ export const WEATHER_OPTIONS: WeatherOption[] = [
   { type: "none", label: "Aucune", icon: Icon.Slash },
   { type: "sun", label: "Soleil", icon: Icon.Sun },
   { type: "cloudy", label: "Nuageux", icon: Icon.Cloud },
+  { type: "fog", label: "Brume", icon: Icon.CloudFog },
   { type: "rain", label: "Pluie", icon: Icon.CloudRain },
   { type: "storm", label: "Orage", icon: Icon.CloudLightning },
+  { type: "bloodRain", label: "Sang", icon: Icon.CloudBlood },
   { type: "snow", label: "Neige", icon: Icon.CloudSnow },
   { type: "wind", label: "Vent", icon: Icon.Wind },
   { type: "moon", label: "Nuit", icon: Icon.Moon },
@@ -76,12 +81,16 @@ export const getWeatherPatchForType = (
     ? { windAngle: 0.6 }
     : type === "wind"
     ? { windAngle: -30 }
+    : type === "fog"
+    ? { windAngle: 0 }
+    : type === "sun"
+    ? { windAngle: -30 }
     : {}),
 });
 
 const Container = styled.div`
   padding: 12px;
-  min-width: 292px;
+  min-width: 330px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -96,7 +105,7 @@ const Title = styled.div`
 
 const WeatherGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 2px;
 `;
 
@@ -145,6 +154,12 @@ const SliderLabel = styled.div`
   }
 `;
 
+/** Même taille de texte que les libellés des curseurs. */
+const ToggleWrap = styled.div`
+  font-size: 12px;
+  font-family: ${ds.font.sans};
+`;
+
 const SliderInput = styled.input`
   width: 100%;
 `;
@@ -168,6 +183,8 @@ export const WeatherControls = (props: {
             type: patch.type ?? weather.type,
             intensity: patch.intensity ?? weather.intensity,
             windAngle: patch.windAngle ?? weather.windAngle,
+            tokensAboveWeather:
+              patch.tokensAboveWeather ?? weather.tokensAboveWeather,
           },
         },
       },
@@ -197,7 +214,11 @@ export const WeatherControls = (props: {
             <SliderRow>
               <SliderLabel>
                 <span>
-                  {weather.type === "moon" ? "Assombrissement" : "Intensité"}
+                  {weather.type === "moon"
+                    ? "Assombrissement"
+                    : weather.type === "fog"
+                    ? "Densité"
+                    : "Intensité"}
                 </span>
                 <span className="value">
                   {Math.round(weather.intensity * 100)}%
@@ -218,7 +239,7 @@ export const WeatherControls = (props: {
             {weather.type === "moon" && (
               <SliderRow>
                 <SliderLabel>
-                  <span>Effets (étoiles & brume)</span>
+                  <span>Lucioles</span>
                   <span className="value">
                     {Math.round(
                       Math.max(0, Math.min(1, weather.windAngle)) * 100
@@ -263,28 +284,40 @@ export const WeatherControls = (props: {
               </SliderRow>
             )}
 
-            {weather.type !== "sun" &&
-              weather.type !== "moon" &&
-              weather.type !== "cloudy" && (
-                <SliderRow>
-                  <SliderLabel>
-                    <span>Direction du vent</span>
-                    <span className="value">
-                      {Math.round(weather.windAngle)}°
-                    </span>
-                  </SliderLabel>
-                  <SliderInput
-                    type="range"
-                    min={-60}
-                    max={60}
-                    step={5}
-                    value={weather.windAngle}
-                    onChange={(e) =>
-                      apply({ windAngle: parseFloat(e.target.value) })
-                    }
-                  />
-                </SliderRow>
-              )}
+            {weather.type !== "moon" && weather.type !== "cloudy" && (
+              <SliderRow>
+                <SliderLabel>
+                  <span>
+                    {weather.type === "fog"
+                      ? "Direction de la dérive"
+                      : weather.type === "sun"
+                      ? "Direction de la lumière"
+                      : "Direction du vent"}
+                  </span>
+                  <span className="value">
+                    {Math.round(weather.windAngle)}°
+                  </span>
+                </SliderLabel>
+                <SliderInput
+                  type="range"
+                  min={-60}
+                  max={60}
+                  step={5}
+                  value={weather.windAngle}
+                  onChange={(e) =>
+                    apply({ windAngle: parseFloat(e.target.value) })
+                  }
+                />
+              </SliderRow>
+            )}
+
+            <ToggleWrap>
+              <ToggleRow
+                label="Tokens au-dessus de la météo"
+                checked={weather.tokensAboveWeather}
+                onChange={(tokensAboveWeather) => apply({ tokensAboveWeather })}
+              />
+            </ToggleWrap>
           </>
         )}
       </Container>

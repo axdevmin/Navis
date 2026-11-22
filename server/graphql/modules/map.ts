@@ -79,6 +79,8 @@ const GraphQLWeatherTypeEnum = t.enumType<WeatherType>({
     { name: "moon", value: "moon" as const },
     { name: "wind", value: "wind" as const },
     { name: "cloudy", value: "cloudy" as const },
+    { name: "fog", value: "fog" as const },
+    { name: "bloodRain", value: "bloodRain" as const },
   ],
 });
 
@@ -88,6 +90,12 @@ const GraphQLWeatherSettingsType = t.objectType<WeatherSettings>({
     t.field({ name: "type", type: t.NonNull(GraphQLWeatherTypeEnum) }),
     t.field({ name: "intensity", type: t.NonNull(t.Float) }),
     t.field({ name: "windAngle", type: t.NonNull(t.Float) }),
+    t.field({
+      name: "tokensAboveWeather",
+      description: "Les tokens passent par-dessus la météo.",
+      type: t.NonNull(t.Boolean),
+      resolve: (source) => source.tokensAboveWeather ?? false,
+    }),
   ],
 });
 
@@ -97,6 +105,8 @@ const GraphQLWeatherSettingsInputType = t.inputObjectType({
     type: { type: t.NonNullInput(GraphQLWeatherTypeEnum) },
     intensity: { type: t.NonNullInput(t.Float) },
     windAngle: { type: t.NonNullInput(t.Float) },
+    /** Absent : la valeur actuelle de la carte est conservée. */
+    tokensAboveWeather: { type: t.Boolean },
   }),
 });
 
@@ -771,6 +781,8 @@ export const mutationFields = [
             type: input.weatherSettings.type as WeatherType,
             intensity: input.weatherSettings.intensity,
             windAngle: input.weatherSettings.windAngle,
+            tokensAboveWeather:
+              input.weatherSettings.tokensAboveWeather ?? undefined,
           },
         }),
         context

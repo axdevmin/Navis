@@ -1384,3 +1384,45 @@ export const MapReveal = createIcon({
     boxSize: "30px",
   },
 });
+
+/** Brume : un nuage posé sur des traînées horizontales. */
+export const CloudFog = createIcon({
+  displayName: "CloudFog",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M4 14.9A7 7 0 1115.71 8h1.79a4.5 4.5 0 012.5 8.24" />
+      <path d="M16 17H7" />
+      <path d="M17 21H9" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});
+
+/** Pluie de sang : nuage et gouttes pleines. */
+export const CloudBlood = createIcon({
+  displayName: "CloudBlood",
+  viewBox: "0 0 24 24",
+  path: (
+    <>
+      <path d="M4 14.9A7 7 0 1115.71 8h1.79a4.5 4.5 0 012.5 8.24" />
+      <path d="M9 15.5l1.6 2.6a1.9 1.9 0 11-3.2 0z" fill="currentColor" />
+      <path d="M15 17.5l1.6 2.6a1.9 1.9 0 11-3.2 0z" fill="currentColor" />
+    </>
+  ),
+  defaultProps: {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    boxSize: "30px",
+  },
+});

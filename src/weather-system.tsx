@@ -3,10 +3,15 @@ import * as THREE from "three";
 import { useFrame, useThree } from "react-three-fiber";
 import type { WeatherType, WeatherSettings } from "./weather-types";
 import { getGraphicsSettings } from "./graphics-quality";
+import { requestMapRender } from "./render-scheduler";
 
 export type { WeatherType, WeatherSettings };
 
-type WeatherConfig = WeatherSettings;
+/**
+ * Réglages d'un effet, plus son opacité de fondu (0 à 1) pendant le passage
+ * d'une météo à une autre.
+ */
+type WeatherConfig = WeatherSettings & { fade: number };
 
 // Particle counts are scaled down on low end hardware, where the per frame
 // position update of every particle is the dominant cost.
@@ -61,6 +66,17 @@ type LineState = {
   velocities: Float32Array;
 };
 
+/**
+ * Décalage horizontal d'une goutte pendant sa chute, par unité de hauteur
+ * (positif : vers la droite). Avec un vent de côté, les gouttes doivent
+ * naître en partie hors de la carte, du côté d'où vient le vent, sinon un
+ * coin du bas reste sans pluie.
+ */
+function rainSideDrift(windAngle: number): number {
+  const { wx, wy } = windComponents(windAngle);
+  return (wx * 0.5) / (1 - wy);
+}
+
 function spawnRainDrop(
   pos: Float32Array,
   vel: Float32Array,
@@ -68,19 +84,21 @@ function spawnRainDrop(
   bounds: { w: number; h: number },
   windAngle: number,
   baseSpeed: number,
-  scatterY = false
+  scatterY = false,
+  lengthScale = 1
 ) {
   const { wx, wy } = windComponents(windAngle);
   const speed = baseSpeed * (0.7 + Math.random() * 0.6);
   const vx = wx * speed * 0.5 + (Math.random() - 0.5) * baseSpeed * 0.05;
   const vy = wy * speed - speed;
 
-  const len = (0.015 + Math.random() * 0.01) * bounds.h;
+  const len = (0.015 + Math.random() * 0.01) * bounds.h * lengthScale;
   const norm = Math.sqrt(vx * vx + vy * vy) || 1;
   const dx = (vx / norm) * len;
   const dy = (vy / norm) * len;
 
-  const x = (Math.random() - 0.5) * bounds.w;
+  const drift = rainSideDrift(windAngle) * bounds.h;
+  const x = (Math.random() - 0.5) * (bounds.w + Math.abs(drift)) - drift / 2;
   const y = scatterY ? (Math.random() - 0.5) * bounds.h : bounds.h * 0.5;
 
   pos[i * 6 + 0] = x;
@@ -98,7 +116,8 @@ function initLineState(
   count: number,
   bounds: { w: number; h: number },
   config: WeatherConfig,
-  baseSpeed: number
+  baseSpeed: number,
+  lengthScale: number
 ): LineState {
   const positions = new Float32Array(count * 6);
   const velocities = new Float32Array(count * 2);
@@ -110,7 +129,8 @@ function initLineState(
       bounds,
       config.windAngle,
       baseSpeed,
-      true
+      true,
+      lengthScale
     );
   }
   return { positions, velocities };
@@ -123,6 +143,7 @@ const RainSystem = React.memo(
     color,
     baseSpeed,
     opacity,
+    lengthScale = 1,
     dimensions,
     clippingPlanes,
   }: {
@@ -131,6 +152,8 @@ const RainSystem = React.memo(
     color: number;
     baseSpeed: number;
     opacity: number;
+    /** Longueur des gouttes : courtes au loin, longues au premier plan. */
+    lengthScale?: number;
     dimensions: WeatherDimensions;
     clippingPlanes: THREE.Plane[];
   }) => {
@@ -139,7 +162,13 @@ const RainSystem = React.memo(
     const bounds = { w: dimensions.width, h: dimensions.height };
 
     React.useEffect(() => {
-      const state = initLineState(count, bounds, config, baseSpeed);
+      const state = initLineState(
+        count,
+        bounds,
+        config,
+        baseSpeed,
+        lengthScale
+      );
       stateRef.current = state;
       if (geomRef.current) {
         geomRef.current.setAttribute(
@@ -160,6 +189,9 @@ const RainSystem = React.memo(
 
       const { wx, wy } = windComponents(config.windAngle);
       const s = baseSpeed * config.intensity;
+      // au-delà, la goutte ne repassera plus au-dessus de la carte
+      const sideLimit =
+        bounds.w * 0.55 + Math.abs(rainSideDrift(config.windAngle)) * bounds.h;
 
       for (let i = 0; i < count; i++) {
         const vx = (wx * s * 0.5 + state.velocities[i * 2] * 0.05) * step;
@@ -172,18 +204,16 @@ const RainSystem = React.memo(
 
         const px = state.positions[i * 6];
         const py = state.positions[i * 6 + 1];
-        if (
-          py < -bounds.h * 0.5 ||
-          px < -bounds.w * 0.5 ||
-          px > bounds.w * 0.5
-        ) {
+        if (py < -bounds.h * 0.5 || px < -sideLimit || px > sideLimit) {
           spawnRainDrop(
             state.positions,
             state.velocities,
             i,
             bounds,
             config.windAngle,
-            baseSpeed
+            baseSpeed,
+            false,
+            lengthScale
           );
         }
       }
@@ -207,7 +237,7 @@ const RainSystem = React.memo(
         <lineBasicMaterial
           color={color}
           transparent
-          opacity={opacity * config.intensity}
+          opacity={opacity * config.intensity * config.fade}
           depthWrite={false}
           depthTest={false}
           clippingPlanes={clippingPlanes}
@@ -228,12 +258,16 @@ function spawnSnowFlake(
   scatterY = false
 ) {
   const { wx } = windComponents(windAngle);
-  pos[i * 3 + 0] = (Math.random() - 0.5) * bounds.w;
-  pos[i * 3 + 1] = scatterY ? (Math.random() - 0.5) * bounds.h : bounds.h * 0.5;
-  pos[i * 3 + 2] = 0;
-
   vel[i * 2 + 0] = wx * 0.004 + (Math.random() - 0.5) * 0.002;
   vel[i * 2 + 1] = -(0.002 + Math.random() * 0.003);
+
+  // comme la pluie : avec du vent, le flocon naît du côté d'où il vient
+  const slope = (wx * 0.004 + vel[i * 2 + 0]) / -vel[i * 2 + 1];
+  const drift = slope * bounds.h;
+  pos[i * 3 + 0] =
+    (Math.random() - 0.5) * (bounds.w + Math.abs(drift)) - drift / 2;
+  pos[i * 3 + 1] = scatterY ? (Math.random() - 0.5) * bounds.h : bounds.h * 0.5;
+  pos[i * 3 + 2] = 0;
 }
 
 const SnowSystem = React.memo(
@@ -282,6 +316,8 @@ const SnowSystem = React.memo(
       const { wx } = windComponents(config.windAngle);
       const speed = config.intensity * step;
       const t = Date.now() * 0.001;
+      // pente maximale d'un flocon (vent à 60° et dérive propre) : ~2,5
+      const snowSideLimit = bounds.w * 0.55 + bounds.h * 2.5;
 
       for (let i = 0; i < SNOW_COUNT; i++) {
         const wobble = Math.sin(t * 0.6 + i * 1.7) * 0.0006;
@@ -290,8 +326,7 @@ const SnowSystem = React.memo(
 
         if (
           p[i * 3 + 1] < -bounds.h * 0.5 ||
-          p[i * 3 + 0] < -bounds.w * 0.5 ||
-          p[i * 3 + 0] > bounds.w * 0.5
+          Math.abs(p[i * 3 + 0]) > snowSideLimit
         ) {
           spawnSnowFlake(p, v, i, bounds, config.windAngle);
         }
@@ -318,7 +353,7 @@ const SnowSystem = React.memo(
           size={3.5}
           sizeAttenuation={false}
           transparent
-          opacity={0.8 * config.intensity}
+          opacity={0.8 * config.intensity * config.fade}
           depthWrite={false}
           depthTest={false}
           clippingPlanes={clippingPlanes}
@@ -430,7 +465,8 @@ const WindSystem = React.memo(
       }
 
       if (matRef.current) {
-        matRef.current.opacity = (0.45 + 0.3 * gustFactor) * config.intensity;
+        matRef.current.opacity =
+          (0.45 + 0.3 * gustFactor) * config.intensity * config.fade;
       }
 
       (
@@ -453,7 +489,7 @@ const WindSystem = React.memo(
           ref={matRef}
           color={0xdde8ff}
           transparent
-          opacity={0.6 * config.intensity}
+          opacity={0.6 * config.intensity * config.fade}
           depthWrite={false}
           depthTest={false}
           clippingPlanes={clippingPlanes}
@@ -475,17 +511,35 @@ const LightningOverlay = ({
   const meshRef = React.useRef<THREE.Mesh>(null);
   const flashRef = React.useRef(0);
   const timerRef = React.useRef(2 + Math.random() * 4);
+  // Un éclair n'est pas un flash unique : un éclat principal, puis une ou
+  // deux répliques plus faibles à quelques centièmes de seconde.
+  const pendingRef = React.useRef<Array<{ at: number; strength: number }>>([]);
 
-  useFrame((_, delta) => {
+  useFrame(({ clock }, delta) => {
+    const now = clock.getElapsedTime();
     timerRef.current -= delta;
     if (timerRef.current <= 0) {
-      flashRef.current = 0.5 + Math.random() * 0.5;
-      timerRef.current = 2 + Math.random() * 5;
+      const strength = 0.75 + Math.random() * 0.25;
+      pendingRef.current.push(
+        { at: now, strength },
+        { at: now + 0.08 + Math.random() * 0.05, strength: strength * 0.5 }
+      );
+      if (Math.random() < 0.5) {
+        pendingRef.current.push({
+          at: now + 0.22 + Math.random() * 0.12,
+          strength: strength * 0.8,
+        });
+      }
+      timerRef.current = 3 + Math.random() * 6;
     }
-    flashRef.current = Math.max(0, flashRef.current - delta * 5);
+    while (pendingRef.current.length > 0 && pendingRef.current[0].at <= now) {
+      const next = pendingRef.current.shift()!;
+      flashRef.current = Math.max(flashRef.current, next.strength);
+    }
+    flashRef.current = Math.max(0, flashRef.current - delta * 7);
     if (meshRef.current) {
       (meshRef.current.material as THREE.MeshBasicMaterial).opacity =
-        flashRef.current * intensity * 0.45;
+        flashRef.current * intensity * 0.55;
     }
   });
 
@@ -497,7 +551,7 @@ const LightningOverlay = ({
       />
       <meshBasicMaterial
         attach="material"
-        color={0xeeeeff}
+        color={0xeef0ff}
         transparent
         opacity={0}
         depthWrite={false}
@@ -507,154 +561,687 @@ const LightningOverlay = ({
   );
 };
 
-// ─── SUN ─────────────────────────────────────────────────────────────────────
+// ─── TEINTE ──────────────────────────────────────────────────────────────────
+// Sous la pluie, la carte s'assombrit et refroidit légèrement.
 
-const SUN_RAY_COUNT = 14;
-const SUN_PARTICLE_COUNT = 45;
+const WeatherTint = ({
+  color,
+  opacity,
+  dimensions,
+}: {
+  color: number;
+  opacity: number;
+  dimensions: WeatherDimensions;
+}) => (
+  <mesh renderOrder={7}>
+    <planeBufferGeometry
+      attach="geometry"
+      args={[dimensions.width, dimensions.height]}
+    />
+    <meshBasicMaterial
+      attach="material"
+      color={color}
+      transparent
+      opacity={opacity}
+      depthWrite={false}
+      depthTest={false}
+    />
+  </mesh>
+);
 
-const SunOverlay = ({
-  intensity,
+// ─── ÉCLABOUSSURES ───────────────────────────────────────────────────────────
+// Petits cercles qui s'ouvrent et s'effacent là où tombent les gouttes.
+
+const SPLASH_COUNT = particleCount(40);
+
+const RainSplashes = ({
+  config,
+  color,
   dimensions,
   clippingPlanes,
 }: {
-  intensity: number;
+  config: WeatherConfig;
+  color: number;
   dimensions: WeatherDimensions;
   clippingPlanes: THREE.Plane[];
 }) => {
-  const overlayRef = React.useRef<THREE.Mesh>(null);
-  const raysGeomRef = React.useRef<THREE.BufferGeometry>(null);
-  const rayMatRef = React.useRef<THREE.LineBasicMaterial>(null);
-  const particlesGeomRef = React.useRef<THREE.BufferGeometry>(null);
-
-  const rayPositions = React.useRef(new Float32Array(SUN_RAY_COUNT * 6));
-  const particlePositions = React.useRef(
-    new Float32Array(SUN_PARTICLE_COUNT * 3)
-  );
-  const particleVel = React.useRef(new Float32Array(SUN_PARTICLE_COUNT));
-
-  const bounds = { w: dimensions.width, h: dimensions.height };
-  const minDim = Math.min(dimensions.width, dimensions.height);
-
-  // Centre du soleil : coin supérieur droit
-  const sunX = dimensions.width * 0.3;
-  const sunY = dimensions.height * 0.3;
-
-  React.useEffect(() => {
-    for (let i = 0; i < SUN_PARTICLE_COUNT; i++) {
-      particlePositions.current[i * 3 + 0] =
-        (Math.random() - 0.5) * bounds.w * 0.5;
-      particlePositions.current[i * 3 + 1] = (Math.random() - 0.5) * bounds.h;
-      particlePositions.current[i * 3 + 2] = 0;
-      particleVel.current[i] = 0.003 + Math.random() * 0.004;
-    }
+  const texture = React.useMemo(() => {
+    const size = 64;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
+    ctx.stroke();
+    return new THREE.CanvasTexture(canvas);
   }, []);
 
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
+  const meshesRef = React.useRef<Array<THREE.Mesh | null>>([]);
+  // vie de chaque éclaboussure : < 0 en attente, de 0 à 1 visible
+  const livesRef = React.useRef<Array<number>>(
+    Array.from({ length: SPLASH_COUNT }, () => -Math.random() * 1.5)
+  );
+  const nextStep = useSimulationStep();
+  const size = Math.min(dimensions.width, dimensions.height) * 0.014;
 
-    if (overlayRef.current) {
-      const pulse = 0.08 + 0.06 * Math.sin(t * 0.5);
-      (overlayRef.current.material as THREE.MeshBasicMaterial).opacity =
-        pulse * intensity;
-    }
-
-    if (raysGeomRef.current && rayMatRef.current) {
-      const innerR = minDim * 0.04;
-      for (let i = 0; i < SUN_RAY_COUNT; i++) {
-        const angle = (i / SUN_RAY_COUNT) * Math.PI * 2 + t * 0.15;
-        const pulseFactor =
-          0.6 + 0.4 * Math.sin(t * 1.3 + (i * Math.PI * 2) / SUN_RAY_COUNT);
-        const outerR = minDim * 0.38 * pulseFactor;
-
-        rayPositions.current[i * 6 + 0] = sunX + Math.cos(angle) * innerR;
-        rayPositions.current[i * 6 + 1] = sunY + Math.sin(angle) * innerR;
-        rayPositions.current[i * 6 + 2] = 0;
-        rayPositions.current[i * 6 + 3] = sunX + Math.cos(angle) * outerR;
-        rayPositions.current[i * 6 + 4] = sunY + Math.sin(angle) * outerR;
-        rayPositions.current[i * 6 + 5] = 0;
+  useFrame(() => {
+    const step = nextStep();
+    if (step === 0) return;
+    const rate = config.type === "storm" ? 0.06 : 0.045;
+    for (let i = 0; i < SPLASH_COUNT; i++) {
+      const mesh = meshesRef.current[i];
+      if (!mesh) continue;
+      let life = livesRef.current[i] + step * rate;
+      if (life >= 1) {
+        // nouvelle goutte, ailleurs, après un court délai
+        life = -Math.random() * (1.4 - config.intensity);
+        mesh.position.set(
+          (Math.random() - 0.5) * dimensions.width,
+          (Math.random() - 0.5) * dimensions.height,
+          0
+        );
       }
-      rayMatRef.current.opacity = (0.5 + 0.25 * Math.sin(t * 0.7)) * intensity;
-      (
-        raysGeomRef.current.attributes.position as THREE.BufferAttribute
-      ).needsUpdate = true;
-    }
-
-    if (particlesGeomRef.current) {
-      for (let i = 0; i < SUN_PARTICLE_COUNT; i++) {
-        particlePositions.current[i * 3 + 1] +=
-          particleVel.current[i] * intensity;
-        particlePositions.current[i * 3 + 0] += (Math.random() - 0.5) * 0.0008;
-        if (particlePositions.current[i * 3 + 1] > bounds.h * 0.55) {
-          particlePositions.current[i * 3 + 0] =
-            sunX + (Math.random() - 0.5) * bounds.w * 0.5;
-          particlePositions.current[i * 3 + 1] = sunY - bounds.h * 0.55;
-        }
+      livesRef.current[i] = life;
+      const material = mesh.material as THREE.MeshBasicMaterial;
+      if (life < 0) {
+        material.opacity = 0;
+        continue;
       }
-      (
-        particlesGeomRef.current.attributes.position as THREE.BufferAttribute
-      ).needsUpdate = true;
+      const scale = size * (0.3 + life * 0.9);
+      mesh.scale.set(scale, scale, 1);
+      material.opacity = (1 - life) * 0.5 * config.intensity * config.fade;
     }
   });
 
   return (
     <>
-      <mesh ref={overlayRef} renderOrder={8}>
+      {Array.from({ length: SPLASH_COUNT }, (_, index) => (
+        <mesh
+          key={index}
+          ref={(mesh: THREE.Mesh | null) => {
+            meshesRef.current[index] = mesh;
+          }}
+          renderOrder={8}
+          position={[
+            (Math.random() - 0.5) * dimensions.width,
+            (Math.random() - 0.5) * dimensions.height,
+            0,
+          ]}
+        >
+          <planeBufferGeometry attach="geometry" args={[1, 1]} />
+          <meshBasicMaterial
+            attach="material"
+            map={texture}
+            color={color}
+            transparent
+            opacity={0}
+            depthWrite={false}
+            depthTest={false}
+            clippingPlanes={clippingPlanes}
+          />
+        </mesh>
+      ))}
+    </>
+  );
+};
+
+// ─── BRUME ───────────────────────────────────────────────────────────────────
+// Nappes de brume qui dérivent lentement sur deux plans (marais, cryptes,
+// forêts), sur un léger voile qui adoucit toute la carte.
+
+const FOG_PATCHES_PER_LAYER = 6;
+
+/** Texture d'une nappe : des volutes claires, effacées vers les bords. */
+const createFogTexture = (): THREE.CanvasTexture => {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  for (let i = 0; i < 140; i++) {
+    const x = size * (0.15 + Math.random() * 0.7);
+    const y = size * (0.25 + Math.random() * 0.5);
+    const r = size * (0.06 + Math.random() * 0.2);
+    const alpha = 0.08 + Math.random() * 0.12;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+    grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+  }
+  // bords fondus : aucune nappe ne doit laisser voir sa forme carrée
+  ctx.globalCompositeOperation = "destination-in";
+  const mask = ctx.createRadialGradient(
+    size / 2,
+    size / 2,
+    size * 0.15,
+    size / 2,
+    size / 2,
+    size / 2
+  );
+  mask.addColorStop(0, "rgba(0, 0, 0, 1)");
+  mask.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = mask;
+  ctx.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(canvas);
+};
+
+/**
+ * Même légère, la brume doit se voir, et au maximum elle doit pouvoir
+ * presque tout noyer : la densité va de 0,4 à 1,6.
+ */
+const fogStrength = (config: WeatherConfig): number =>
+  0.4 + 1.2 * config.intensity;
+
+type FogPatch = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  speed: number;
+  phase: number;
+  opacity: number;
+  rotation: number;
+};
+
+const FogOverlay = ({
+  config,
+  dimensions,
+  clippingPlanes,
+}: {
+  config: WeatherConfig;
+  dimensions: WeatherDimensions;
+  clippingPlanes: THREE.Plane[];
+}) => {
+  const texture = React.useMemo(createFogTexture, []);
+  const meshesRef = React.useRef<Array<THREE.Mesh | null>>([]);
+  const nextStep = useSimulationStep();
+
+  // deux plans : au fond de grandes nappes lentes, devant des plus vives
+  const patches = React.useMemo<Array<FogPatch>>(() => {
+    const result: Array<FogPatch> = [];
+    for (let layer = 0; layer < 2; layer++) {
+      for (let i = 0; i < FOG_PATCHES_PER_LAYER; i++) {
+        const width =
+          dimensions.width *
+          (layer === 0 ? 0.9 : 0.55) *
+          (0.8 + Math.random() * 0.4);
+        result.push({
+          x: (Math.random() - 0.5) * dimensions.width * 1.3,
+          y: (Math.random() - 0.5) * dimensions.height,
+          width,
+          height: width * (0.45 + Math.random() * 0.25),
+          speed:
+            dimensions.width *
+            (layer === 0 ? 0.00025 : 0.0005) *
+            (0.7 + Math.random() * 0.6),
+          phase: Math.random() * Math.PI * 2,
+          opacity:
+            layer === 0
+              ? 0.8 + Math.random() * 0.2
+              : 0.6 + Math.random() * 0.25,
+          rotation: (Math.random() - 0.5) * 0.4,
+        });
+      }
+    }
+    return result;
+  }, [dimensions.width, dimensions.height]);
+
+  useFrame(({ clock }) => {
+    const step = nextStep();
+    const t = clock.getElapsedTime();
+    // la dérive suit le curseur de direction : 0° vers la droite
+    const angle = (config.windAngle * Math.PI) / 180;
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    const limitX = dimensions.width * 0.5;
+    const limitY = dimensions.height * 0.5;
+    patches.forEach((patch, index) => {
+      const mesh = meshesRef.current[index];
+      if (!mesh) return;
+      if (step > 0) {
+        patch.x += dx * patch.speed * step * (0.4 + config.intensity);
+        patch.y += dy * patch.speed * step * (0.4 + config.intensity);
+        // sortie d'un côté : la nappe revient de l'autre
+        if (patch.x - patch.width / 2 > limitX)
+          patch.x = -limitX - patch.width / 2;
+        if (patch.x + patch.width / 2 < -limitX)
+          patch.x = limitX + patch.width / 2;
+        if (patch.y - patch.height / 2 > limitY)
+          patch.y = -limitY - patch.height / 2;
+        if (patch.y + patch.height / 2 < -limitY)
+          patch.y = limitY + patch.height / 2;
+      }
+      mesh.position.set(patch.x, patch.y, 0);
+      // la brume « respire » : son opacité ondule très lentement
+      const breathing = 0.8 + 0.2 * Math.sin(t * 0.22 + patch.phase);
+      (mesh.material as THREE.MeshBasicMaterial).opacity =
+        Math.min(1, patch.opacity * breathing * fogStrength(config)) *
+        config.fade;
+    });
+  });
+
+  return (
+    <>
+      <mesh renderOrder={7}>
         <planeBufferGeometry
           attach="geometry"
           args={[dimensions.width, dimensions.height]}
         />
         <meshBasicMaterial
           attach="material"
-          color={0xffdd44}
+          color={0xc6ced8}
           transparent
-          opacity={0.08 * intensity}
+          opacity={0.2 * fogStrength(config) * config.fade}
           depthWrite={false}
           depthTest={false}
         />
       </mesh>
-
-      <lineSegments renderOrder={8}>
-        <bufferGeometry ref={raysGeomRef}>
-          <bufferAttribute
-            attachObject={["attributes", "position"]}
-            array={rayPositions.current}
-            count={SUN_RAY_COUNT * 2}
-            itemSize={3}
-            usage={THREE.DynamicDrawUsage}
+      {patches.map((patch, index) => (
+        <mesh
+          key={index}
+          ref={(mesh: THREE.Mesh | null) => {
+            meshesRef.current[index] = mesh;
+          }}
+          renderOrder={8}
+          position={[patch.x, patch.y, 0]}
+          rotation={[0, 0, patch.rotation]}
+        >
+          <planeBufferGeometry
+            attach="geometry"
+            args={[patch.width, patch.height]}
           />
-        </bufferGeometry>
-        <lineBasicMaterial
-          ref={rayMatRef}
-          color={0xffee77}
+          <meshBasicMaterial
+            attach="material"
+            map={texture}
+            color={0xdde3ea}
+            transparent
+            opacity={0}
+            depthWrite={false}
+            depthTest={false}
+            clippingPlanes={clippingPlanes}
+          />
+        </mesh>
+      ))}
+    </>
+  );
+};
+
+// ─── LUMIÈRE (soleil et nuit) ────────────────────────────────────────────────
+// Sur une carte vue de dessus, la lumière se lit sur le sol : une teinte, un
+// côté éclairé, un côté dans l'ombre. Les textures sont partagées.
+
+/** Lueur ronde : blanche au centre, transparente au bord. */
+const createGlowTexture = (): THREE.CanvasTexture => {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const grad = ctx.createRadialGradient(
+    size / 2,
+    size / 2,
+    0,
+    size / 2,
+    size / 2,
+    size / 2
+  );
+  grad.addColorStop(0, "rgba(255, 255, 255, 1)");
+  grad.addColorStop(0.35, "rgba(255, 255, 255, 0.45)");
+  grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(canvas);
+};
+
+/** Assombrissement des bords : transparent au centre, opaque aux coins. */
+const createVignetteTexture = (): THREE.CanvasTexture => {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const grad = ctx.createRadialGradient(
+    size / 2,
+    size / 2,
+    size * 0.2,
+    size / 2,
+    size / 2,
+    size * 0.72
+  );
+  grad.addColorStop(0, "rgba(255, 255, 255, 0)");
+  grad.addColorStop(1, "rgba(255, 255, 255, 1)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(canvas);
+};
+
+/**
+ * Faisceau de lumière : doux sur les côtés, s'éteignant vers le bout. Le
+ * faisceau part du haut de la texture.
+ */
+const createBeamTexture = (): THREE.CanvasTexture => {
+  const width = 64;
+  const height = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  const across = ctx.createLinearGradient(0, 0, width, 0);
+  across.addColorStop(0, "rgba(255, 255, 255, 0)");
+  across.addColorStop(0.5, "rgba(255, 255, 255, 1)");
+  across.addColorStop(1, "rgba(255, 255, 255, 0)");
+  ctx.fillStyle = across;
+  ctx.fillRect(0, 0, width, height);
+  ctx.globalCompositeOperation = "destination-in";
+  const along = ctx.createLinearGradient(0, 0, 0, height);
+  along.addColorStop(0, "rgba(0, 0, 0, 1)");
+  along.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = along;
+  ctx.fillRect(0, 0, width, height);
+  return new THREE.CanvasTexture(canvas);
+};
+
+/** Petit point lumineux rond pour les poussières et les lucioles. */
+const createSpriteTexture = (): THREE.CanvasTexture => {
+  const size = 32;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+  grad.addColorStop(0, "rgba(255, 255, 255, 1)");
+  grad.addColorStop(0.4, "rgba(255, 255, 255, 0.55)");
+  grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(canvas);
+};
+
+/** Un plan couvrant la carte, teinté (mélange normal ou additif). */
+const FullPlane = (props: {
+  dimensions: WeatherDimensions;
+  color: number;
+  opacity: number;
+  additive?: boolean;
+  map?: THREE.Texture;
+  renderOrder?: number;
+}) => (
+  <mesh renderOrder={props.renderOrder ?? 7}>
+    <planeBufferGeometry
+      attach="geometry"
+      args={[props.dimensions.width, props.dimensions.height]}
+    />
+    <meshBasicMaterial
+      attach="material"
+      color={props.color}
+      map={props.map}
+      transparent
+      opacity={props.opacity}
+      blending={props.additive ? THREE.AdditiveBlending : THREE.NormalBlending}
+      depthWrite={false}
+      depthTest={false}
+    />
+  </mesh>
+);
+
+/**
+ * Points lumineux qui flottent et scintillent (poussières au soleil,
+ * lucioles la nuit). En mélange additif, la luminosité de chaque point se
+ * règle par sa couleur : noir = invisible.
+ */
+const FloatingLights = (props: {
+  count: number;
+  color: [number, number, number];
+  size: number;
+  /** Vitesse de dérive, en fraction de la carte par image. */
+  wander: number;
+  /** Vitesse du scintillement. */
+  blinkSpeed: number;
+  /** Part du temps où un point est éteint (0 : toujours visible). */
+  darkRatio: number;
+  brightness: number;
+  dimensions: WeatherDimensions;
+  clippingPlanes: THREE.Plane[];
+}) => {
+  const texture = React.useMemo(createSpriteTexture, []);
+  const geomRef = React.useRef<THREE.BufferGeometry>(null);
+  const nextStep = useSimulationStep();
+  const { width, height } = props.dimensions;
+
+  const state = React.useMemo(() => {
+    const positions = new Float32Array(props.count * 3);
+    const colors = new Float32Array(props.count * 3);
+    const headings = new Float32Array(props.count);
+    const phases = new Float32Array(props.count);
+    for (let i = 0; i < props.count; i++) {
+      positions[i * 3] = (Math.random() - 0.5) * width;
+      positions[i * 3 + 1] = (Math.random() - 0.5) * height;
+      headings[i] = Math.random() * Math.PI * 2;
+      phases[i] = Math.random() * Math.PI * 2;
+    }
+    return { positions, colors, headings, phases };
+  }, [props.count, width, height]);
+
+  useFrame(({ clock }) => {
+    const geometry = geomRef.current;
+    if (!geometry) return;
+    const step = nextStep();
+    const t = clock.getElapsedTime();
+    const speed = Math.min(width, height) * props.wander * step;
+    for (let i = 0; i < props.count; i++) {
+      // trajectoire qui serpente doucement
+      state.headings[i] += (Math.random() - 0.5) * 0.15 * step;
+      state.positions[i * 3] += Math.cos(state.headings[i]) * speed;
+      state.positions[i * 3 + 1] += Math.sin(state.headings[i]) * speed;
+      if (Math.abs(state.positions[i * 3]) > width / 2) {
+        state.positions[i * 3] *= -0.98;
+      }
+      if (Math.abs(state.positions[i * 3 + 1]) > height / 2) {
+        state.positions[i * 3 + 1] *= -0.98;
+      }
+      const wave = 0.5 + 0.5 * Math.sin(t * props.blinkSpeed + state.phases[i]);
+      const lit =
+        props.darkRatio > 0
+          ? Math.max(0, (wave - props.darkRatio) / (1 - props.darkRatio))
+          : 0.35 + 0.65 * wave;
+      const level = lit * props.brightness;
+      state.colors[i * 3] = props.color[0] * level;
+      state.colors[i * 3 + 1] = props.color[1] * level;
+      state.colors[i * 3 + 2] = props.color[2] * level;
+    }
+    (geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    (geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+  });
+
+  return (
+    <points renderOrder={8}>
+      <bufferGeometry ref={geomRef}>
+        <bufferAttribute
+          attachObject={["attributes", "position"]}
+          array={state.positions}
+          count={props.count}
+          itemSize={3}
+          usage={THREE.DynamicDrawUsage}
+        />
+        <bufferAttribute
+          attachObject={["attributes", "color"]}
+          array={state.colors}
+          count={props.count}
+          itemSize={3}
+          usage={THREE.DynamicDrawUsage}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        map={texture}
+        vertexColors
+        size={props.size}
+        sizeAttenuation={false}
+        transparent
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+        depthTest={false}
+        clippingPlanes={props.clippingPlanes}
+      />
+    </points>
+  );
+};
+
+/**
+ * Position de la source de lumière, hors de la carte, réglée par le curseur
+ * de direction (−60° à gauche, 0° en haut, 60° à droite).
+ */
+const lightSourcePosition = (
+  angleDeg: number,
+  dimensions: WeatherDimensions,
+  distance = 0.75
+): [number, number] => {
+  const angle = (Math.max(-60, Math.min(60, angleDeg)) * Math.PI) / 180;
+  return [
+    Math.sin(angle) * dimensions.width * distance,
+    Math.cos(angle) * dimensions.height * distance,
+  ];
+};
+
+// ─── SOLEIL ──────────────────────────────────────────────────────────────────
+// Lumière chaude venue d'un côté, puits de lumière et poussières en
+// suspension ; le côté opposé reste dans une ombre légère.
+
+const SUN_BEAM_COUNT = 5;
+const SUN_DUST_COUNT = particleCount(70);
+
+const SunOverlay = ({
+  intensity,
+  lightAngle,
+  dimensions,
+  clippingPlanes,
+}: {
+  intensity: number;
+  lightAngle: number;
+  dimensions: WeatherDimensions;
+  clippingPlanes: THREE.Plane[];
+}) => {
+  const glowTexture = React.useMemo(createGlowTexture, []);
+  const beamTexture = React.useMemo(createBeamTexture, []);
+  const vignetteTexture = React.useMemo(createVignetteTexture, []);
+  const beamRefs = React.useRef<Array<THREE.Mesh | null>>([]);
+  const glowRef = React.useRef<THREE.Mesh>(null);
+
+  // le soleil est plus proche que la lune : sa lumière entre dans la carte
+  const [sunX, sunY] = lightSourcePosition(lightAngle, dimensions, 0.55);
+  const diagonal = Math.hypot(dimensions.width, dimensions.height);
+  // direction de la lumière : du soleil vers le centre de la carte
+  const towardCenter = Math.atan2(-sunY, -sunX);
+
+  const beams = React.useMemo(
+    () =>
+      Array.from({ length: SUN_BEAM_COUNT }, (_, index) => ({
+        offset: (index / (SUN_BEAM_COUNT - 1) - 0.5) * 0.9,
+        width: 0.08 + Math.random() * 0.1,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.12 + Math.random() * 0.12,
+      })),
+    []
+  );
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    if (glowRef.current) {
+      (glowRef.current.material as THREE.MeshBasicMaterial).opacity =
+        (0.6 + 0.06 * Math.sin(t * 0.4)) * intensity;
+    }
+    beams.forEach((beam, index) => {
+      const mesh = beamRefs.current[index];
+      if (!mesh) return;
+      // les faisceaux s'éventaillent un peu et respirent lentement
+      const spread =
+        beam.offset * 0.55 + Math.sin(t * 0.05 + beam.phase) * 0.03;
+      const angle = towardCenter + spread;
+      const length = diagonal * 1.2;
+      mesh.position.set(
+        sunX + Math.cos(angle) * length * 0.5,
+        sunY + Math.sin(angle) * length * 0.5,
+        0
+      );
+      mesh.rotation.z = angle + Math.PI / 2;
+      (mesh.material as THREE.MeshBasicMaterial).opacity =
+        (0.2 + 0.1 * Math.sin(t * beam.speed + beam.phase)) * intensity;
+    });
+  });
+
+  return (
+    <>
+      {/* lumière dorée sur toute la carte */}
+      <FullPlane
+        dimensions={dimensions}
+        color={0xffb24a}
+        opacity={0.12 * intensity}
+        additive
+      />
+      {/* bords légèrement dans l'ombre */}
+      <FullPlane
+        dimensions={dimensions}
+        color={0x2a1a08}
+        map={vignetteTexture}
+        opacity={0.45 * intensity}
+      />
+      {/* halo du côté d'où vient la lumière */}
+      <mesh ref={glowRef} position={[sunX, sunY, 0]} renderOrder={8}>
+        <planeBufferGeometry
+          attach="geometry"
+          args={[diagonal * 1.2, diagonal * 1.2]}
+        />
+        <meshBasicMaterial
+          attach="material"
+          map={glowTexture}
+          color={0xffd28a}
           transparent
-          opacity={0.5 * intensity}
+          opacity={0.6 * intensity}
+          blending={THREE.AdditiveBlending}
           depthWrite={false}
           depthTest={false}
           clippingPlanes={clippingPlanes}
         />
-      </lineSegments>
-
-      <points renderOrder={8}>
-        <bufferGeometry ref={particlesGeomRef}>
-          <bufferAttribute
-            attachObject={["attributes", "position"]}
-            array={particlePositions.current}
-            count={SUN_PARTICLE_COUNT}
-            itemSize={3}
-            usage={THREE.DynamicDrawUsage}
+      </mesh>
+      {beams.map((beam, index) => (
+        <mesh
+          key={index}
+          ref={(mesh: THREE.Mesh | null) => {
+            beamRefs.current[index] = mesh;
+          }}
+          renderOrder={8}
+        >
+          <planeBufferGeometry
+            attach="geometry"
+            args={[diagonal * beam.width, diagonal * 1.2]}
           />
-        </bufferGeometry>
-        <pointsMaterial
-          color={0xffffa0}
-          size={4}
-          sizeAttenuation={false}
-          transparent
-          opacity={0.75 * intensity}
-          depthWrite={false}
-          depthTest={false}
-          clippingPlanes={clippingPlanes}
-        />
-      </points>
+          <meshBasicMaterial
+            attach="material"
+            map={beamTexture}
+            color={0xffe2a8}
+            transparent
+            opacity={0}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            depthTest={false}
+            clippingPlanes={clippingPlanes}
+          />
+        </mesh>
+      ))}
+      <FloatingLights
+        count={SUN_DUST_COUNT}
+        color={[1, 0.9, 0.65]}
+        size={3}
+        wander={0.0004}
+        blinkSpeed={0.8}
+        darkRatio={0}
+        brightness={0.8 * intensity}
+        dimensions={dimensions}
+        clippingPlanes={clippingPlanes}
+      />
     </>
   );
 };
@@ -755,13 +1342,14 @@ const CloudyOverlay = ({
         const mat = new THREE.MeshBasicMaterial({
           map: shadowTexture,
           transparent: true,
-          opacity: b.op * config.intensity,
+          opacity: b.op * config.intensity * config.fade,
           depthWrite: false,
           depthTest: false,
           clippingPlanes,
         });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set(b.dx, b.dy, 0);
+        mat.userData.baseOpacity = b.op;
         mesh.renderOrder = 8;
         cg.add(mesh);
         mats.push(mat);
@@ -800,6 +1388,11 @@ const CloudyOverlay = ({
 
   useFrame(() => {
     for (const c of cloudData.current) {
+      // l'opacité suit l'intensité et le fondu sans recréer les nuages
+      for (const mat of c.mats) {
+        mat.opacity =
+          (mat.userData.baseOpacity ?? 0.3) * config.intensity * config.fade;
+      }
       c.group.position.x += c.vx * config.intensity;
       c.group.position.y += c.vy * config.intensity;
 
@@ -833,7 +1426,7 @@ const CloudyOverlay = ({
           attach="material"
           color={0xfff5dd}
           transparent
-          opacity={0.04 * config.intensity}
+          opacity={0.04 * config.intensity * config.fade}
           depthWrite={false}
           depthTest={false}
         />
@@ -843,199 +1436,79 @@ const CloudyOverlay = ({
   );
 };
 
-// ─── MOON ────────────────────────────────────────────────────────────────────
-// Étoiles en deux tailles (petites + brillantes), brume argentée dérivante
+// ─── NUIT ────────────────────────────────────────────────────────────────────
+// Éclairage bleuté de clair de lune, bords dans le noir, lueur de lune d'un
+// côté et lucioles qui s'allument et s'éteignent.
 
-const MOON_FOG_COUNT = 45;
-const MOON_STAR_DIM = 65; // petites étoiles (fond)
-const MOON_STAR_BRIGHT = 18; // étoiles brillantes (clignotement plus visible)
+const NIGHT_FIREFLY_COUNT = particleCount(36);
 
 const MoonOverlay = ({
   darkness,
   effectIntensity,
+  lightAngle,
+  fade,
   dimensions,
   clippingPlanes,
 }: {
   darkness: number;
+  /** Fondu d'apparition / disparition (0 à 1). */
+  fade: number;
   effectIntensity: number;
+  lightAngle: number;
   dimensions: WeatherDimensions;
   clippingPlanes: THREE.Plane[];
 }) => {
-  const overlayRef = React.useRef<THREE.Mesh>(null);
-  const fogGeomRef = React.useRef<THREE.BufferGeometry>(null);
-  const fogMatRef = React.useRef<THREE.PointsMaterial>(null);
-  const dimStarsGeomRef = React.useRef<THREE.BufferGeometry>(null);
-  const dimStarsMatRef = React.useRef<THREE.PointsMaterial>(null);
-  const brightStarsGeomRef = React.useRef<THREE.BufferGeometry>(null);
-  const brightStarsMatRef = React.useRef<THREE.PointsMaterial>(null);
-
-  const bounds = { w: dimensions.width, h: dimensions.height };
-
-  const fogPos = React.useRef(new Float32Array(MOON_FOG_COUNT * 3));
-  const fogVel = React.useRef(new Float32Array(MOON_FOG_COUNT * 2));
-  const dimStarPos = React.useRef(new Float32Array(MOON_STAR_DIM * 3));
-  const brightStarPos = React.useRef(new Float32Array(MOON_STAR_BRIGHT * 3));
-  // phase de clignotement individuelle pour chaque étoile brillante
-  const brightPhase = React.useRef(
-    Array.from({ length: MOON_STAR_BRIGHT }, () => Math.random() * Math.PI * 2)
-  );
-
-  React.useEffect(() => {
-    for (let i = 0; i < MOON_FOG_COUNT; i++) {
-      fogPos.current[i * 3 + 0] = (Math.random() - 0.5) * bounds.w * 0.9;
-      fogPos.current[i * 3 + 1] = (Math.random() - 0.5) * bounds.h * 0.9;
-      fogPos.current[i * 3 + 2] = 0;
-      fogVel.current[i * 2 + 0] = (Math.random() - 0.5) * 0.22;
-      fogVel.current[i * 2 + 1] = (Math.random() - 0.5) * 0.05;
-    }
-    for (let i = 0; i < MOON_STAR_DIM; i++) {
-      dimStarPos.current[i * 3 + 0] = (Math.random() - 0.5) * bounds.w * 0.9;
-      dimStarPos.current[i * 3 + 1] = (Math.random() - 0.5) * bounds.h * 0.9;
-      dimStarPos.current[i * 3 + 2] = 0;
-    }
-    for (let i = 0; i < MOON_STAR_BRIGHT; i++) {
-      brightStarPos.current[i * 3 + 0] = (Math.random() - 0.5) * bounds.w * 0.9;
-      brightStarPos.current[i * 3 + 1] = (Math.random() - 0.5) * bounds.h * 0.9;
-      brightStarPos.current[i * 3 + 2] = 0;
-    }
-  }, []);
-
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
-
-    if (overlayRef.current) {
-      (overlayRef.current.material as THREE.MeshBasicMaterial).opacity =
-        Math.min(0.3 * darkness, 0.55);
-    }
-
-    if (fogGeomRef.current) {
-      for (let i = 0; i < MOON_FOG_COUNT; i++) {
-        fogPos.current[i * 3 + 0] += fogVel.current[i * 2] * 0.22;
-        fogPos.current[i * 3 + 1] += fogVel.current[i * 2 + 1] * 0.22;
-        if (Math.abs(fogPos.current[i * 3 + 0]) > bounds.w * 0.5) {
-          fogPos.current[i * 3 + 0] =
-            -Math.sign(fogVel.current[i * 2]) * bounds.w * 0.45;
-        }
-        if (Math.abs(fogPos.current[i * 3 + 1]) > bounds.h * 0.5) {
-          fogPos.current[i * 3 + 1] = (Math.random() - 0.5) * bounds.h * 0.85;
-        }
-      }
-      if (fogMatRef.current) {
-        fogMatRef.current.opacity = Math.min(
-          (0.07 + 0.035 * Math.sin(t * 0.35)) * effectIntensity,
-          0.16
-        );
-      }
-      (
-        fogGeomRef.current.attributes.position as THREE.BufferAttribute
-      ).needsUpdate = true;
-    }
-
-    // Petites étoiles : clignotement lent et discret
-    if (dimStarsMatRef.current) {
-      dimStarsMatRef.current.opacity = Math.min(
-        (0.38 + 0.15 * Math.sin(t * 0.3)) * effectIntensity,
-        0.7
-      );
-    }
-
-    // Étoiles brillantes : clignotement individuel plus marqué
-    // (on anime juste l'opacité globale du groupe, les phases individuelles
-    // seraient nécessaires pour clignotement per-star — gardé simple ici)
-    if (brightStarsMatRef.current) {
-      brightStarsMatRef.current.opacity = Math.min(
-        (0.5 + 0.35 * Math.abs(Math.sin(t * 0.5 + 1.2))) * effectIntensity,
-        0.95
-      );
-    }
-  });
+  const glowTexture = React.useMemo(createGlowTexture, []);
+  const vignetteTexture = React.useMemo(createVignetteTexture, []);
+  const [moonX, moonY] = lightSourcePosition(lightAngle, dimensions);
+  const diagonal = Math.hypot(dimensions.width, dimensions.height);
 
   return (
     <>
-      <mesh ref={overlayRef} renderOrder={8}>
+      {/* nuit : la carte s'assombrit et bleuit */}
+      <FullPlane
+        dimensions={dimensions}
+        color={0x060b1f}
+        opacity={(0.15 + 0.5 * darkness) * fade}
+      />
+      {/* les bords plongent dans le noir */}
+      <FullPlane
+        dimensions={dimensions}
+        color={0x02040c}
+        map={vignetteTexture}
+        opacity={(0.25 + 0.5 * darkness) * fade}
+      />
+      {/* clair de lune venu d'un côté */}
+      <mesh position={[moonX, moonY, 0]} renderOrder={8}>
         <planeBufferGeometry
           attach="geometry"
-          args={[dimensions.width, dimensions.height]}
+          args={[diagonal * 1.4, diagonal * 1.4]}
         />
         <meshBasicMaterial
           attach="material"
-          color={0x060f22}
+          map={glowTexture}
+          color={0x7f9cd6}
           transparent
-          opacity={0.3 * darkness}
+          opacity={(0.1 + 0.18 * darkness) * fade}
+          blending={THREE.AdditiveBlending}
           depthWrite={false}
           depthTest={false}
+          clippingPlanes={clippingPlanes}
         />
       </mesh>
-
-      {/* Petites étoiles de fond */}
-      <points renderOrder={8}>
-        <bufferGeometry ref={dimStarsGeomRef}>
-          <bufferAttribute
-            attachObject={["attributes", "position"]}
-            array={dimStarPos.current}
-            count={MOON_STAR_DIM}
-            itemSize={3}
-          />
-        </bufferGeometry>
-        <pointsMaterial
-          ref={dimStarsMatRef}
-          color={0xd0d8ff}
-          size={1.5}
-          sizeAttenuation={false}
-          transparent
-          opacity={0.4 * effectIntensity}
-          depthWrite={false}
-          depthTest={false}
+      {effectIntensity > 0 ? (
+        <FloatingLights
+          count={NIGHT_FIREFLY_COUNT}
+          color={[0.82, 1, 0.45]}
+          size={10}
+          wander={0.0007}
+          blinkSpeed={1.1}
+          darkRatio={0.45}
+          brightness={effectIntensity}
+          dimensions={dimensions}
           clippingPlanes={clippingPlanes}
         />
-      </points>
-
-      {/* Étoiles brillantes */}
-      <points renderOrder={8}>
-        <bufferGeometry ref={brightStarsGeomRef}>
-          <bufferAttribute
-            attachObject={["attributes", "position"]}
-            array={brightStarPos.current}
-            count={MOON_STAR_BRIGHT}
-            itemSize={3}
-          />
-        </bufferGeometry>
-        <pointsMaterial
-          ref={brightStarsMatRef}
-          color={0xffffff}
-          size={3.5}
-          sizeAttenuation={false}
-          transparent
-          opacity={0.6 * effectIntensity}
-          depthWrite={false}
-          depthTest={false}
-          clippingPlanes={clippingPlanes}
-        />
-      </points>
-
-      {/* Brume argentée dérivante */}
-      <points renderOrder={8}>
-        <bufferGeometry ref={fogGeomRef}>
-          <bufferAttribute
-            attachObject={["attributes", "position"]}
-            array={fogPos.current}
-            count={MOON_FOG_COUNT}
-            itemSize={3}
-            usage={THREE.DynamicDrawUsage}
-          />
-        </bufferGeometry>
-        <pointsMaterial
-          ref={fogMatRef}
-          color={0x8faabb}
-          size={24}
-          sizeAttenuation={false}
-          transparent
-          opacity={0.1 * effectIntensity}
-          depthWrite={false}
-          depthTest={false}
-          clippingPlanes={clippingPlanes}
-        />
-      </points>
+      ) : null}
     </>
   );
 };
@@ -1045,6 +1518,49 @@ const MoonOverlay = ({
 type Props = {
   config: WeatherConfig;
   dimensions: WeatherDimensions;
+};
+
+/** Couleurs des trois plans de gouttes, des éclaboussures et de la teinte. */
+type RainPalette = {
+  far: number;
+  mid: number;
+  near: number;
+  splash: number;
+  tint: number;
+  tintOpacity: number;
+  /** Multiplie l'opacité des gouttes. */
+  dropOpacity: number;
+};
+
+const RAIN_PALETTES: Record<"rain" | "storm" | "bloodRain", RainPalette> = {
+  rain: {
+    far: 0x8ea6c0,
+    mid: 0xaaccee,
+    near: 0xd8e8f6,
+    splash: 0xd4e2f0,
+    tint: 0x15202d,
+    tintOpacity: 0.22,
+    dropOpacity: 1,
+  },
+  storm: {
+    far: 0x6f7f99,
+    mid: 0x8899bb,
+    near: 0xb4c3dc,
+    splash: 0xc4d2e4,
+    tint: 0x0b111b,
+    tintOpacity: 0.34,
+    dropOpacity: 1,
+  },
+  // pluie de sang : gouttes sombres et brillantes, ciel rougeâtre
+  bloodRain: {
+    far: 0xa3212a,
+    mid: 0xd12f3a,
+    near: 0xf0505a,
+    splash: 0xe03a45,
+    tint: 0x8c1019,
+    tintOpacity: 0.42,
+    dropOpacity: 1.35,
+  },
 };
 
 const WeatherSystemInner = ({ config, dimensions }: Props) => {
@@ -1067,7 +1583,8 @@ const WeatherSystemInner = ({ config, dimensions }: Props) => {
   if (config.type === "sun") {
     return (
       <SunOverlay
-        intensity={config.intensity}
+        intensity={config.intensity * config.fade}
+        lightAngle={config.windAngle}
         dimensions={dimensions}
         clippingPlanes={clippingPlanes}
       />
@@ -1088,7 +1605,21 @@ const WeatherSystemInner = ({ config, dimensions }: Props) => {
     return (
       <MoonOverlay
         darkness={config.intensity}
-        effectIntensity={Math.max(0, Math.min(1, config.windAngle))}
+        fade={config.fade}
+        effectIntensity={
+          Math.max(0, Math.min(1, config.windAngle)) * config.fade
+        }
+        lightAngle={-35}
+        dimensions={dimensions}
+        clippingPlanes={clippingPlanes}
+      />
+    );
+  }
+
+  if (config.type === "fog") {
+    return (
+      <FogOverlay
+        config={config}
         dimensions={dimensions}
         clippingPlanes={clippingPlanes}
       />
@@ -1115,36 +1646,65 @@ const WeatherSystemInner = ({ config, dimensions }: Props) => {
     );
   }
 
-  if (config.type === "rain") {
-    return (
-      <RainSystem
-        config={config}
-        count={RAIN_COUNT}
-        color={0xaaccee}
-        baseSpeed={0.022}
-        opacity={0.55}
-        dimensions={dimensions}
-        clippingPlanes={clippingPlanes}
-      />
-    );
-  }
-
-  if (config.type === "storm") {
+  if (
+    config.type === "rain" ||
+    config.type === "storm" ||
+    config.type === "bloodRain"
+  ) {
+    // Trois plans de gouttes : fines et lentes au loin, longues et rapides
+    // au premier plan. Le total reste celui d'une seule couche.
+    const isStorm = config.type === "storm";
+    const palette = RAIN_PALETTES[config.type];
+    const total = isStorm ? STORM_COUNT : RAIN_COUNT;
+    const speed = isStorm ? 0.04 : 0.022;
     return (
       <>
+        <WeatherTint
+          color={palette.tint}
+          opacity={palette.tintOpacity * config.intensity * config.fade}
+          dimensions={dimensions}
+        />
         <RainSystem
           config={config}
-          count={STORM_COUNT}
-          color={0x8899bb}
-          baseSpeed={0.04}
-          opacity={0.65}
+          count={Math.max(1, Math.round(total * 0.5))}
+          color={palette.far}
+          baseSpeed={speed * 0.7}
+          opacity={(isStorm ? 0.35 : 0.3) * palette.dropOpacity}
+          lengthScale={0.6}
           dimensions={dimensions}
           clippingPlanes={clippingPlanes}
         />
-        <LightningOverlay
-          intensity={config.intensity}
+        <RainSystem
+          config={config}
+          count={Math.max(1, Math.round(total * 0.35))}
+          color={palette.mid}
+          baseSpeed={speed}
+          opacity={(isStorm ? 0.6 : 0.5) * palette.dropOpacity}
           dimensions={dimensions}
+          clippingPlanes={clippingPlanes}
         />
+        <RainSystem
+          config={config}
+          count={Math.max(1, Math.round(total * 0.15))}
+          color={palette.near}
+          baseSpeed={speed * 1.4}
+          opacity={Math.min(1, (isStorm ? 0.75 : 0.65) * palette.dropOpacity)}
+          lengthScale={1.7}
+          dimensions={dimensions}
+          clippingPlanes={clippingPlanes}
+        />
+        <RainSplashes
+          config={config}
+          color={palette.splash}
+          dimensions={dimensions}
+          clippingPlanes={clippingPlanes}
+        />
+        {isStorm ? (
+          <LightningOverlay
+            intensity={config.intensity * config.fade}
+            dimensions={dimensions}
+          />
+        ) : null}
       </>
     );
   }
@@ -1152,7 +1712,118 @@ const WeatherSystemInner = ({ config, dimensions }: Props) => {
   return null;
 };
 
-export const WeatherSystem = React.memo(({ config, dimensions }: Props) => {
-  if (config.type === "none") return null;
-  return <WeatherSystemInner config={config} dimensions={dimensions} />;
-});
+// ─── FONDU ENTRE DEUX MÉTÉOS ─────────────────────────────────────────────────
+
+/** Durée du fondu quand le MJ change de météo. */
+const WEATHER_FADE_MS = 2400;
+
+type WeatherLayer = {
+  id: number;
+  settings: WeatherSettings;
+  /** Début de l'apparition (−Infinity : déjà là au chargement). */
+  enteredAt: number;
+  /** Début de la disparition, null tant que la couche est active. */
+  leftAt: number | null;
+};
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+const layerFade = (layer: WeatherLayer, now: number): number => {
+  const fadeAt = (time: number) =>
+    clamp01((time - layer.enteredAt) / WEATHER_FADE_MS);
+  if (layer.leftAt === null) return fadeAt(now);
+  return (
+    fadeAt(layer.leftAt) * clamp01(1 - (now - layer.leftAt) / WEATHER_FADE_MS)
+  );
+};
+
+const isLayerSettled = (layer: WeatherLayer, now: number): boolean =>
+  layer.leftAt === null && now - layer.enteredAt >= WEATHER_FADE_MS;
+
+/**
+ * Passer d'une météo à une autre se fait en fondu : l'ancienne s'efface
+ * pendant que la nouvelle apparaît. Changer l'intensité ou le vent d'une
+ * même météo reste immédiat.
+ */
+export const WeatherSystem = React.memo(
+  ({
+    config,
+    dimensions,
+  }: {
+    config: WeatherSettings;
+    dimensions: WeatherDimensions;
+  }) => {
+    const nextIdRef = React.useRef(1);
+    const [layers, setLayers] = React.useState<Array<WeatherLayer>>(() =>
+      config.type === "none"
+        ? []
+        : [{ id: 0, settings: config, enteredAt: -Infinity, leftAt: null }]
+    );
+    const [, setTick] = React.useState(0);
+
+    React.useEffect(() => {
+      setLayers((previous) => {
+        const now = performance.now();
+        const active = previous.find((layer) => layer.leftAt === null);
+        if (active && active.settings.type === config.type) {
+          return previous.map((layer) =>
+            layer === active ? { ...layer, settings: config } : layer
+          );
+        }
+        const leaving = previous.map((layer) =>
+          layer.leftAt === null ? { ...layer, leftAt: now } : layer
+        );
+        if (config.type === "none") return leaving;
+        return [
+          ...leaving,
+          {
+            id: nextIdRef.current++,
+            settings: config,
+            enteredAt: now,
+            leftAt: null,
+          },
+        ];
+      });
+      // seules les valeurs comptent, pas l'identité de l'objet
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [config.type, config.intensity, config.windAngle]);
+
+    const now = performance.now();
+    const isFading = layers.some((layer) => !isLayerSettled(layer, now));
+
+    // Pendant un fondu, on met à jour les opacités ~15 fois par seconde et on
+    // retire les couches qui ont fini de disparaître.
+    React.useEffect(() => {
+      if (!isFading) return;
+      const interval = window.setInterval(() => {
+        const current = performance.now();
+        setLayers((previous) => {
+          const kept = previous.filter(
+            (layer) =>
+              layer.leftAt === null || current - layer.leftAt < WEATHER_FADE_MS
+          );
+          return kept.length === previous.length ? previous : kept;
+        });
+        setTick((tick) => tick + 1);
+        requestMapRender();
+      }, 66);
+      return () => window.clearInterval(interval);
+    }, [isFading]);
+
+    return (
+      <>
+        {layers.map((layer) => {
+          const fade = layerFade(layer, now);
+          if (layer.settings.type === "none" || fade <= 0) return null;
+          return (
+            <WeatherSystemInner
+              key={layer.id}
+              config={{ ...layer.settings, fade }}
+              dimensions={dimensions}
+            />
+          );
+        })}
+      </>
+    );
+  }
+);

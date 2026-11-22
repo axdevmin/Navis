@@ -791,6 +791,8 @@ const WEATHER_ICONS: Record<WeatherType, typeof Icon.Cloud> = {
   snow: Icon.CloudSnow,
   wind: Icon.Wind,
   moon: Icon.Moon,
+  fog: Icon.CloudFog,
+  bloodRain: Icon.CloudBlood,
 };
 
 /**

@@ -420,6 +420,11 @@ type WeatherSettings {
   type: WeatherType!
   intensity: Float!
   windAngle: Float!
+
+  """
+  Les tokens passent par-dessus la météo.
+  """
+  tokensAboveWeather: Boolean!
 }
 
 """
@@ -434,6 +439,8 @@ enum WeatherType {
   moon
   wind
   cloudy
+  fog
+  bloodRain
 }
 
 """
@@ -986,6 +993,7 @@ input WeatherSettingsInput {
   type: WeatherType!
   intensity: Float!
   windAngle: Float!
+  tokensAboveWeather: Boolean
 }
 
 type MapUpdateRoomsResult {

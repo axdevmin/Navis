@@ -99,8 +99,20 @@ export const WeatherShelter = (props: {
 
   // Les matériaux de la météo sont créés au fil de l'eau (changement de
   // type, d'intensité…) : on les règle à chaque image, c'est quelques objets.
+  // Toute la météo est dessinée dans une même tranche, juste au-dessus des
+  // tokens et sous le brouillard de guerre : ses voiles (ordre 7) se
+  // mêlaient sinon aux tokens, dont le contour a le même ordre.
+  const weatherOrder = props.renderOrder + 0.5;
   useFrame(() => {
     weatherGroupRef.current?.traverse((object) => {
+      const data = object.userData as { baseRenderOrder?: number };
+      if (data.baseRenderOrder === undefined) {
+        data.baseRenderOrder = object.renderOrder;
+      }
+      const order = weatherOrder + data.baseRenderOrder / 100;
+      if (object.renderOrder !== order) {
+        object.renderOrder = order;
+      }
       const material = (object as THREE.Mesh).material as
         | THREE.Material
         | Array<THREE.Material>

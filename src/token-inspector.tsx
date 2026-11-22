@@ -331,7 +331,8 @@ export const TokenInspector = (props: {
   );
 };
 
-const ToggleRow = (props: {
+/** Ligne « libellé + interrupteur », réutilisée par le panneau Météo. */
+export const ToggleRow = (props: {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;

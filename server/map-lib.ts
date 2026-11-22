@@ -451,7 +451,14 @@ export const mapUpdateWeather = (params: {
     RT.chain(
       (deps) => () => () =>
         deps.maps.updateMapSettings(params.mapId, {
-          weatherSettings: params.weatherSettings,
+          weatherSettings: {
+            ...params.weatherSettings,
+            // réglage absent de la demande : on garde celui de la carte
+            tokensAboveWeather:
+              params.weatherSettings.tokensAboveWeather ??
+              deps.maps.get(params.mapId)?.weatherSettings.tokensAboveWeather ??
+              false,
+          },
         })
     ),
     RT.chainW((map) =>
